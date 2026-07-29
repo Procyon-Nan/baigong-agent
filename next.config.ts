@@ -5,6 +5,9 @@ const nextConfig: NextConfig = {
   experimental: {
     useTypeScriptCli: true,
   },
+  images: {
+    unoptimized: true,
+  },
   output: "standalone",
   poweredByHeader: false,
 };
