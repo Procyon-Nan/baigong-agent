@@ -1,9 +1,6 @@
-import {
-  ensureDataDirectory,
-  loadOrCreateProjectSecret,
-  projectSecretFiles,
-} from "@/src/server/config/data-directory";
+import { verifyProjectData } from "@/src/server/config/project-data-status";
 import { pingDatabase } from "@/src/server/db/client";
+import { operationalErrorMetadata } from "@/src/server/errors";
 
 export type ReadinessState = "ready" | "missing" | "unavailable";
 
@@ -36,13 +33,10 @@ export function isInfrastructureReady(readiness: ApplicationReadiness): boolean 
 
 async function inspectDataDirectory(): Promise<ReadinessState> {
   try {
-    await ensureDataDirectory();
-    await Promise.all([
-      loadOrCreateProjectSecret(projectSecretFiles.credentialEncryption),
-      loadOrCreateProjectSecret(projectSecretFiles.jwtSigning),
-    ]);
+    await verifyProjectData();
     return "ready";
-  } catch {
+  } catch (error) {
+    logReadinessFailure("project-data", error);
     return "unavailable";
   }
 }
@@ -55,7 +49,19 @@ async function inspectDatabase(): Promise<ReadinessState> {
   try {
     await pingDatabase();
     return "ready";
-  } catch {
+  } catch (error) {
+    logReadinessFailure("database", error);
     return "unavailable";
   }
+}
+
+function logReadinessFailure(component: "project-data" | "database", error: unknown): void {
+  console.error(
+    JSON.stringify({
+      level: "error",
+      event: "readiness_check_failed",
+      component,
+      ...operationalErrorMetadata(error),
+    }),
+  );
 }

@@ -3,6 +3,11 @@ export type PublicError = {
   readonly message: string;
 };
 
+export type OperationalErrorMetadata = {
+  readonly errorCode: string;
+  readonly errorName: string;
+};
+
 export class ApplicationError extends Error {
   readonly code: string;
   readonly status: number;
@@ -36,4 +41,16 @@ export function toPublicError(error: unknown): PublicError {
 
 export function errorStatus(error: unknown): number {
   return error instanceof ApplicationError ? error.status : 500;
+}
+
+export function operationalErrorMetadata(error: unknown): OperationalErrorMetadata {
+  if (error instanceof ApplicationError) {
+    return { errorCode: error.code, errorName: error.name };
+  }
+
+  if (error instanceof Error) {
+    return { errorCode: "UNCLASSIFIED_ERROR", errorName: error.name };
+  }
+
+  return { errorCode: "UNKNOWN_THROWABLE", errorName: "Unknown" };
 }

@@ -10,9 +10,15 @@ import { ApplicationError } from "@/src/server/errors";
 
 const SECRET_FILE_PATTERN = /^[a-z0-9][a-z0-9._-]+$/;
 
-export const projectSecretFiles = {
-  credentialEncryption: "credential-encryption.key",
-  jwtSigning: "jwt-signing.key",
+export const projectSecrets = {
+  credentialEncryption: {
+    fileName: "credential-encryption.key",
+    length: 32,
+  },
+  jwtSigning: {
+    fileName: "jwt-signing.key",
+    length: 32,
+  },
 } as const;
 
 export async function ensureDataDirectory(

@@ -6,6 +6,8 @@ import {
   ensureDataDirectory,
   loadOrCreateProjectSecret,
 } from "@/src/server/config/data-directory";
+import { verifyProjectData } from "@/src/server/config/project-data-status";
+import { initializeProjectData } from "@/src/server/bootstrap";
 
 const temporaryDirectories: string[] = [];
 
@@ -41,5 +43,19 @@ describe("project data directory", () => {
     await expect(loadOrCreateProjectSecret("invalid.key", 32, source, root)).rejects.toMatchObject({
       code: "INVALID_SECRET_FILE",
     });
+  });
+
+  it("initializes and verifies project data separately", async () => {
+    const root = await mkdtemp(join(tmpdir(), "baigong-agent-"));
+    temporaryDirectories.push(root);
+    const source = { BAIGONG_DATA_DIR: "state" };
+
+    await expect(verifyProjectData(source, root)).rejects.toMatchObject({
+      code: "DATA_DIRECTORY_UNAVAILABLE",
+    });
+    await expect(stat(join(root, "state"))).rejects.toMatchObject({ code: "ENOENT" });
+
+    await initializeProjectData(source, root);
+    await expect(verifyProjectData(source, root)).resolves.toBeUndefined();
   });
 });

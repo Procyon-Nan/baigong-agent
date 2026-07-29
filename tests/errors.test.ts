@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { ApplicationError, errorStatus, toPublicError } from "@/src/server/errors";
+import {
+  ApplicationError,
+  errorStatus,
+  operationalErrorMetadata,
+  toPublicError,
+} from "@/src/server/errors";
 
 describe("public errors", () => {
   it("returns explicitly exposed application errors", () => {
@@ -21,6 +26,13 @@ describe("public errors", () => {
     expect(toPublicError(new Error("secret detail"))).toEqual({
       code: "INTERNAL_ERROR",
       message: "服务暂时不可用，请稍后重试。",
+    });
+  });
+
+  it("reduces operational errors to non-sensitive metadata", () => {
+    expect(operationalErrorMetadata(new Error("postgresql://secret@database"))).toEqual({
+      errorCode: "UNCLASSIFIED_ERROR",
+      errorName: "Error",
     });
   });
 });
