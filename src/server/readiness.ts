@@ -1,3 +1,5 @@
+import "server-only";
+
 import { verifyProjectData } from "@/src/server/config/project-data-status";
 import { pingDatabase } from "@/src/server/db/client";
 import { operationalErrorMetadata } from "@/src/server/errors";

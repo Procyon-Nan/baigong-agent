@@ -1,3 +1,5 @@
+import "server-only";
+
 import { constants } from "node:fs";
 import { access, stat } from "node:fs/promises";
 import { join } from "node:path";

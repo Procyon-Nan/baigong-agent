@@ -11,7 +11,7 @@
     "build:agent": "eve build",
     "db:check": "drizzle-kit check",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "node --import tsx scripts/migrate.ts",
+    "db:migrate": "node --conditions=react-server --import tsx scripts/migrate.ts",
     "dev": "next dev",
     "start": "next start",
     "test": "vitest run",
@@ -29,6 +29,7 @@
     "pg": "8.22.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
+    "server-only": "0.0.1",
     "zod": "4.4.3"
   },
   "devDependencies": {
