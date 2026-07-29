@@ -1,8 +1,9 @@
-import { Cable, Database, FolderKey, ServerCog } from "lucide-react";
+import { Cable, Database, FolderKey, ServerCog, type LucideIcon } from "lucide-react";
 import { ApplicationFrame } from "@/app/components/application-frame";
 import { ReloadButton } from "@/app/components/reload-button";
 import { StatusIndicator } from "@/app/components/status-indicator";
 import { inspectApplicationReadiness } from "@/src/server/readiness";
+import styles from "./page.module.css";
 
 export const dynamic = "force-dynamic";
 
@@ -17,26 +18,28 @@ export default async function HomePage() {
 
   return (
     <ApplicationFrame>
-      <header className="topbar">
+      <header className={styles.topbar}>
         <div>
-          <span className="eyebrow">系统初始化</span>
-          <h1>运行环境</h1>
+          <span className={styles.eyebrow}>系统初始化</span>
+          <h1 className={styles.title}>运行环境</h1>
         </div>
-        <div className="topbar-actions">
-          <span className="last-checked">检查于 {checkedAt}</span>
+        <div className={styles.topbarActions}>
+          <span className={styles.lastChecked}>检查于 {checkedAt}</span>
           <ReloadButton />
         </div>
       </header>
 
-      <section className="status-section" aria-labelledby="service-status-title">
-        <div className="section-heading">
+      <section className={styles.statusSection} aria-labelledby="service-status-title">
+        <div className={styles.sectionHeading}>
           <div>
-            <h2 id="service-status-title">服务状态</h2>
-            <p>基础设施就绪后，身份认证与管理配置才能启用。</p>
+            <h2 className={styles.sectionTitle} id="service-status-title">
+              服务状态
+            </h2>
+            <p className={styles.sectionDescription}>基础设施就绪后，身份认证与管理配置才能启用。</p>
           </div>
         </div>
 
-        <div className="status-list">
+        <div className={styles.statusList}>
           <StatusRow
             description="Next.js 与 eve 同源服务"
             icon={ServerCog}
@@ -64,12 +67,14 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section className="mode-band" aria-label="当前运行模式">
+      <section className={styles.modeBand} aria-label="当前运行模式">
         <div>
-          <span className="mode-label">当前模式</span>
-          <strong>仅管理模式</strong>
+          <span className={styles.modeLabel}>当前模式</span>
+          <strong className={styles.modeValue}>仅管理模式</strong>
         </div>
-        <p>对话入口保持关闭，不会回退到内置模型或环境变量中的提供商凭据。</p>
+        <p className={styles.modeDescription}>
+          对话入口保持关闭，不会回退到内置模型或环境变量中的提供商凭据。
+        </p>
       </section>
     </ApplicationFrame>
   );
@@ -82,18 +87,18 @@ function StatusRow({
   state,
 }: {
   readonly description: string;
-  readonly icon: typeof ServerCog;
+  readonly icon: LucideIcon;
   readonly label: string;
   readonly state: "ready" | "missing" | "unavailable";
 }) {
   return (
-    <div className="status-row">
-      <span className="status-icon">
+    <div className={styles.statusRow}>
+      <span className={styles.statusIcon}>
         <Icon aria-hidden="true" size={19} />
       </span>
-      <div className="status-copy">
-        <strong>{label}</strong>
-        <span>{description}</span>
+      <div className={styles.statusCopy}>
+        <strong className={styles.statusLabel}>{label}</strong>
+        <span className={styles.statusDescription}>{description}</span>
       </div>
       <StatusIndicator state={state} />
     </div>

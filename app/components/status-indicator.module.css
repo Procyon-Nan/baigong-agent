@@ -1,0 +1,26 @@
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 76px;
+  justify-content: center;
+  padding: 5px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.ready {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.missing {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.unavailable {
+  background: var(--danger-soft);
+  color: var(--danger);
+}

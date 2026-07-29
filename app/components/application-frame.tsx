@@ -1,5 +1,6 @@
 import { Bot, LayoutDashboard, LockKeyhole, Settings, UsersRound } from "lucide-react";
 import type { ReactNode } from "react";
+import styles from "./application-frame.module.css";
 
 const navigation = [
   { label: "系统状态", icon: LayoutDashboard, active: true },
@@ -10,36 +11,38 @@ const navigation = [
 
 export function ApplicationFrame({ children }: { readonly children: ReactNode }) {
   return (
-    <div className="application-frame">
-      <aside className="sidebar">
-        <div className="brand">
-          <span className="brand-mark">百</span>
+    <div className={styles.applicationFrame}>
+      <aside className={styles.sidebar}>
+        <div className={styles.brand}>
+          <span className={styles.brandMark}>百</span>
           <span>
-            <strong>百工 Agent</strong>
-            <small>管理工作台</small>
+            <strong className={styles.brandName}>百工 Agent</strong>
+            <small className={styles.brandDescription}>管理工作台</small>
           </span>
         </div>
 
-        <nav aria-label="主导航" className="navigation">
+        <nav aria-label="主导航" className={styles.navigation}>
           {navigation.map(({ active, icon: Icon, label }) => (
             <div
               aria-current={active ? "page" : undefined}
-              className={active ? "navigation-item active" : "navigation-item disabled"}
+              className={`${styles.navigationItem} ${active ? styles.active : styles.disabled}`}
               key={label}
             >
               <Icon aria-hidden="true" size={17} />
               <span>{label}</span>
-              {!active ? <LockKeyhole aria-hidden="true" className="nav-lock" size={13} /> : null}
+              {!active ? (
+                <LockKeyhole aria-hidden="true" className={styles.navigationLock} size={13} />
+              ) : null}
             </div>
           ))}
         </nav>
 
-        <div className="sidebar-foot">
-          <span className="environment-dot" />
+        <div className={styles.sidebarFoot}>
+          <span className={styles.environmentDot} />
           <span>P1 基础环境</span>
         </div>
       </aside>
-      <main className="main-content">{children}</main>
+      <main className={styles.mainContent}>{children}</main>
     </div>
   );
 }

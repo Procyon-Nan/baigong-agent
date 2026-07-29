@@ -1,0 +1,47 @@
+.centeredState,
+.globalError {
+  display: flex;
+  min-height: 100vh;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+}
+
+.icon {
+  margin-bottom: 18px;
+  color: var(--warning);
+}
+
+.title,
+.copy {
+  margin: 0;
+  letter-spacing: 0;
+}
+
+.title {
+  font-size: 22px;
+}
+
+.copy {
+  margin-top: 9px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.commandButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 36px;
+  margin-top: 20px;
+  padding: 0 14px;
+  border: 1px solid #155d75;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #ffffff;
+  cursor: pointer;
+  text-decoration: none;
+}

@@ -2,6 +2,7 @@
 
 import { AlertTriangle, RotateCcw } from "lucide-react";
 import { useEffect } from "react";
+import styles from "./error-state.module.css";
 
 export default function ErrorPage({
   error,
@@ -15,11 +16,11 @@ export default function ErrorPage({
   }, [error]);
 
   return (
-    <main className="centered-state">
-      <AlertTriangle aria-hidden="true" size={28} />
-      <h1>页面暂时不可用</h1>
-      <p>请求未能完成，请稍后重试。</p>
-      <button className="command-button" onClick={reset} type="button">
+    <main className={styles.centeredState}>
+      <AlertTriangle aria-hidden="true" className={styles.icon} size={28} />
+      <h1 className={styles.title}>页面暂时不可用</h1>
+      <p className={styles.copy}>请求未能完成，请稍后重试。</p>
+      <button className={styles.commandButton} onClick={reset} type="button">
         <RotateCcw aria-hidden="true" size={16} />
         重试
       </button>

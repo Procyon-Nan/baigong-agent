@@ -1,0 +1,145 @@
+.applicationFrame {
+  display: grid;
+  grid-template-columns: 236px minmax(0, 1fr);
+  min-height: 100vh;
+}
+
+.sidebar {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  padding: 20px 14px;
+  background: #20292e;
+  color: #eef3f5;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-height: 44px;
+  padding: 0 8px;
+}
+
+.brandMark {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 7px;
+  background: #2a8095;
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.brandName,
+.brandDescription {
+  display: block;
+  letter-spacing: 0;
+}
+
+.brandName {
+  font-size: 14px;
+}
+
+.brandDescription {
+  margin-top: 2px;
+  color: #9fb0b8;
+  font-size: 11px;
+}
+
+.navigation {
+  display: grid;
+  gap: 4px;
+  margin-top: 34px;
+}
+
+.navigationItem {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) 16px;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 10px;
+  border-radius: 6px;
+  color: #c7d1d6;
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.active {
+  background: #334047;
+  color: #ffffff;
+}
+
+.disabled {
+  color: #7f9098;
+}
+
+.navigationLock {
+  justify-self: end;
+}
+
+.sidebarFoot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: auto;
+  padding: 12px 8px 0;
+  border-top: 1px solid #39464d;
+  color: #9fb0b8;
+  font-size: 11px;
+}
+
+.environmentDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #68b78c;
+}
+
+.mainContent {
+  width: min(100%, 1120px);
+  padding: 34px 42px 56px;
+}
+
+@media (max-width: 720px) {
+  .applicationFrame {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    position: static;
+    height: auto;
+    padding: 14px 16px;
+  }
+
+  .brandDescription,
+  .sidebarFoot,
+  .navigationLock {
+    display: none;
+  }
+
+  .navigation {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 5px;
+    margin-top: 14px;
+  }
+
+  .navigationItem {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    gap: 4px;
+    min-width: 0;
+    min-height: 52px;
+    padding: 7px 3px;
+    font-size: 10px;
+  }
+
+  .mainContent {
+    width: 100%;
+    padding: 24px 16px 40px;
+  }
+}
