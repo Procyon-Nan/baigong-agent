@@ -1,5 +1,7 @@
 import { defineAgent } from "eve";
+import { unconfiguredModel } from "./unconfigured-model";
 
 export default defineAgent({
-  model: "xai/grok-4.5",
+  model: unconfiguredModel,
+  modelContextWindowTokens: 1,
 });

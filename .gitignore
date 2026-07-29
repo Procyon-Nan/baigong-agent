@@ -1,10 +1,12 @@
 node_modules
 .env*
+!.env.example
 .eve
 .vercel
 .next
 .output
 .nitro
+.data
 dist
 .DS_Store
 *.tsbuildinfo

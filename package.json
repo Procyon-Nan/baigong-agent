@@ -7,26 +7,46 @@
     "#evals/*": "./evals/*"
   },
   "scripts": {
-    "build": "eve build",
-    "dev": "eve dev",
-    "start": "eve start",
-    "typecheck": "tsc"
+    "build": "eve build && next build",
+    "build:agent": "eve build",
+    "db:check": "drizzle-kit check",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "node --import tsx scripts/migrate.ts",
+    "dev": "next dev",
+    "start": "next start",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@vercel/connect": "0.4.2",
     "ai": "^7.0.38",
+    "dotenv": "17.4.2",
+    "drizzle-orm": "0.45.2",
     "eve": "^0.27.11",
+    "lucide-react": "1.27.0",
+    "next": "16.2.12",
+    "pg": "8.22.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
     "zod": "4.4.3"
   },
   "devDependencies": {
     "@types/node": "24.x",
-    "typescript": "7.0.2"
+    "@types/pg": "8.20.0",
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
+    "drizzle-kit": "0.31.10",
+    "tsx": "4.23.1",
+    "typescript": "7.0.2",
+    "vitest": "4.1.10"
   },
   "overrides": {
-    "ai": "^7.0.38"
+    "ai": "^7.0.38",
+    "postcss": "8.5.24",
+    "sharp": "0.35.3"
   },
   "engines": {
     "node": "24.x"
   }
-
 }
