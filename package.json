@@ -15,7 +15,7 @@
     "db:migrate": "node --conditions=react-server --import tsx scripts/migrate.ts",
     "dev": "next dev",
     "start": "next start",
-    "test": "vitest run",
+    "test": "vitest run --exclude tests/p2-database.test.ts",
     "test:p2:database": "vitest run tests/p2-database.test.ts",
     "test:p2:http": "node --conditions=react-server --import tsx scripts/verify-p2-http.ts",
     "test:watch": "vitest",
