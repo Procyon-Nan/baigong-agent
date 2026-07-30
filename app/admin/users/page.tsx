@@ -1,7 +1,10 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { ApplicationFrame } from "@/app/components/application-frame";
-import { resolvePrincipal } from "@/src/server/authorization";
+import {
+  isAdminPrincipal,
+  resolvePrincipal,
+} from "@/src/server/authorization";
 import { listUsers } from "@/src/server/users/service";
 import { UsersManager } from "./users-manager";
 import styles from "../admin.module.css";
@@ -12,9 +15,8 @@ export default async function UsersPage() {
   const principal = await resolvePrincipal(new Headers(await headers()));
   if (!principal) redirect("/login");
   if (principal.mustChangePassword) redirect("/change-password");
-  if (principal.role !== "ADMIN" || principal.source !== "LOCAL")
-    redirect("/settings");
-  const users = await listUsers(principal.tenantId);
+  if (!isAdminPrincipal(principal)) redirect("/settings");
+  const users = await listUsers(principal);
 
   return (
     <ApplicationFrame
