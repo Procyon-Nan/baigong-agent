@@ -1,0 +1,69 @@
+.page {
+  min-height: 100vh;
+  background: var(--surface);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 54px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.brandMark {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 6px;
+  background: var(--accent);
+  color: white;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 13px;
+  min-height: calc(100vh - 54px);
+  color: var(--text-muted);
+}
+
+.state strong,
+.state span {
+  display: block;
+}
+
+.state strong {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.state span {
+  margin-top: 4px;
+  font-size: 11px;
+}
+
+.successIcon {
+  color: var(--success);
+}
+
+.failureIcon {
+  color: var(--danger);
+}
+
+.spinner {
+  color: var(--accent);
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

@@ -1,13 +1,27 @@
-import { Cable, Database, FolderKey, ServerCog, type LucideIcon } from "lucide-react";
+import {
+  Cable,
+  Database,
+  FolderKey,
+  ServerCog,
+  type LucideIcon,
+} from "lucide-react";
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { ApplicationFrame } from "@/app/components/application-frame";
 import { ReloadButton } from "@/app/components/reload-button";
 import { StatusIndicator } from "@/app/components/status-indicator";
 import { inspectApplicationReadiness } from "@/src/server/readiness";
+import { resolvePrincipal } from "@/src/server/authorization";
 import styles from "./page.module.css";
 
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
+  const principal = await resolvePrincipal(new Headers(await headers()));
+  if (!principal) redirect("/login");
+  if (principal.mustChangePassword) redirect("/change-password");
+  if (principal.role !== "ADMIN") redirect("/settings");
+
   const readiness = await inspectApplicationReadiness();
   const checkedAt = new Intl.DateTimeFormat("zh-CN", {
     hour: "2-digit",
@@ -17,7 +31,10 @@ export default async function HomePage() {
   }).format(new Date(readiness.checkedAt));
 
   return (
-    <ApplicationFrame>
+    <ApplicationFrame
+      navigationMode="admin"
+      user={{ displayName: principal.displayName, role: principal.role }}
+    >
       <header className={styles.topbar}>
         <div>
           <span className={styles.eyebrow}>系统初始化</span>
@@ -29,13 +46,18 @@ export default async function HomePage() {
         </div>
       </header>
 
-      <section className={styles.statusSection} aria-labelledby="service-status-title">
+      <section
+        className={styles.statusSection}
+        aria-labelledby="service-status-title"
+      >
         <div className={styles.sectionHeading}>
           <div>
             <h2 className={styles.sectionTitle} id="service-status-title">
               服务状态
             </h2>
-            <p className={styles.sectionDescription}>基础设施就绪后，身份认证与管理配置才能启用。</p>
+            <p className={styles.sectionDescription}>
+              基础设施就绪后，身份认证与管理配置才能启用。
+            </p>
           </div>
         </div>
 

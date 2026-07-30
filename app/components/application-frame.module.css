@@ -93,6 +93,32 @@
   font-size: 11px;
 }
 
+.sidebarIdentity {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.logoutButton {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  margin-left: auto;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #c7d1d6;
+  cursor: pointer;
+}
+
+.logoutButton:hover {
+  background: #39464d;
+  color: #ffffff;
+}
+
 .environmentDot {
   width: 7px;
   height: 7px;
@@ -123,7 +149,7 @@
   }
 
   .navigation {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(54px, 1fr));
     gap: 5px;
     margin-top: 14px;
   }

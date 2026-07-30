@@ -1,5 +1,10 @@
 export type NavigationMode = "setup" | "user" | "admin";
-export type NavigationIcon = "dashboard" | "chat" | "users" | "settings";
+export type NavigationIcon =
+  | "dashboard"
+  | "chat"
+  | "users"
+  | "integrations"
+  | "settings";
 
 export type NavigationItem = {
   readonly label: string;
@@ -32,6 +37,13 @@ const navigationItems: readonly NavigationItem[] = [
     enabledIn: ["admin"],
   },
   {
+    label: "嵌入接入",
+    href: "/admin/integrations",
+    icon: "integrations",
+    visibleIn: ["setup", "admin"],
+    enabledIn: ["admin"],
+  },
+  {
     label: "设置",
     href: "/settings",
     icon: "settings",
@@ -44,12 +56,19 @@ export type NavigationItemState = NavigationItem & {
   readonly enabled: boolean;
 };
 
-export function navigationForMode(mode: NavigationMode): readonly NavigationItemState[] {
+export function navigationForMode(
+  mode: NavigationMode,
+): readonly NavigationItemState[] {
   return navigationItems
     .filter((item) => item.visibleIn.includes(mode))
     .map((item) => ({ ...item, enabled: item.enabledIn.includes(mode) }));
 }
 
-export function isNavigationItemActive(pathname: string, href: string): boolean {
-  return href === "/" ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
+export function isNavigationItemActive(
+  pathname: string,
+  href: string,
+): boolean {
+  return href === "/"
+    ? pathname === href
+    : pathname === href || pathname.startsWith(`${href}/`);
 }

@@ -13,6 +13,10 @@ import { ApplicationError } from "@/src/server/errors";
 const SECRET_FILE_PATTERN = /^[a-z0-9][a-z0-9._-]+$/;
 
 export const projectSecrets = {
+  betterAuth: {
+    fileName: "better-auth.key",
+    length: 32,
+  },
   credentialEncryption: {
     fileName: "credential-encryption.key",
     length: 32,
@@ -89,6 +93,9 @@ export async function loadOrCreateProjectSecret(
   return secret;
 }
 
-function isNodeError(error: unknown, code: string): error is NodeJS.ErrnoException {
+function isNodeError(
+  error: unknown,
+  code: string,
+): error is NodeJS.ErrnoException {
   return error instanceof Error && "code" in error && error.code === code;
 }

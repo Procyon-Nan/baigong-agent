@@ -1,0 +1,72 @@
+.header {
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.header span {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.header h1 {
+  margin: 6px 0 0;
+  font-size: 26px;
+  letter-spacing: 0;
+}
+
+.details {
+  width: min(100%, 620px);
+  margin-top: 28px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.details > div {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  min-height: 70px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  color: var(--accent);
+}
+
+.details > div:last-child {
+  border-bottom: 0;
+}
+
+.details span,
+.details small,
+.details strong {
+  display: block;
+}
+
+.details small {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.details strong {
+  margin-top: 4px;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.action {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  margin-top: 18px;
+  padding: 0 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 650;
+  text-decoration: none;
+}

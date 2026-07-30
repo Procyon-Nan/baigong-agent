@@ -1,14 +1,20 @@
 import type { ReactNode } from "react";
 import { Navigation } from "./navigation";
+import { LogoutButton } from "./logout-button";
 import type { NavigationMode } from "./navigation-model";
 import styles from "./application-frame.module.css";
 
 export function ApplicationFrame({
   children,
   navigationMode = "setup",
+  user,
 }: {
   readonly children: ReactNode;
   readonly navigationMode?: NavigationMode;
+  readonly user?: {
+    readonly displayName: string;
+    readonly role: "USER" | "ADMIN";
+  };
 }) {
   return (
     <div className={styles.applicationFrame}>
@@ -25,7 +31,10 @@ export function ApplicationFrame({
 
         <div className={styles.sidebarFoot}>
           <span className={styles.environmentDot} />
-          <span>P1 基础环境</span>
+          <span className={styles.sidebarIdentity}>
+            {user ? `${user.displayName} · ${user.role}` : "P2 身份与权限"}
+          </span>
+          {user ? <LogoutButton /> : null}
         </div>
       </aside>
       <main className={styles.mainContent}>{children}</main>

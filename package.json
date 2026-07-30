@@ -7,6 +7,7 @@
     "#evals/*": "./evals/*"
   },
   "scripts": {
+    "admin:bootstrap": "node --conditions=react-server --import tsx scripts/bootstrap-admin.ts",
     "build": "eve build && next build",
     "build:agent": "eve build",
     "db:check": "drizzle-kit check",
@@ -15,12 +16,16 @@
     "dev": "next dev",
     "start": "next start",
     "test": "vitest run",
+    "test:p2:database": "vitest run tests/p2-database.test.ts",
+    "test:p2:http": "node --conditions=react-server --import tsx scripts/verify-p2-http.ts",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@node-rs/argon2": "2.0.2",
     "@vercel/connect": "0.4.2",
     "ai": "^7.0.38",
+    "better-auth": "1.6.25",
     "dotenv": "17.4.2",
     "drizzle-orm": "0.45.2",
     "eve": "^0.27.11",

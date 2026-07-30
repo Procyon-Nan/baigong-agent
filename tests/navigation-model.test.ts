@@ -7,21 +7,29 @@ import {
 describe("navigation model", () => {
   it("keeps setup navigation visible but disables unfinished routes", () => {
     expect(
-      navigationForMode("setup").map(({ enabled, href }) => ({ enabled, href })),
+      navigationForMode("setup").map(({ enabled, href }) => ({
+        enabled,
+        href,
+      })),
     ).toEqual([
       { href: "/", enabled: true },
       { href: "/chat", enabled: false },
       { href: "/admin/users", enabled: false },
+      { href: "/admin/integrations", enabled: false },
       { href: "/settings", enabled: false },
     ]);
   });
 
   it("selects role-specific destinations without treating them as authorization", () => {
-    expect(navigationForMode("user").map((item) => item.href)).toEqual(["/chat", "/settings"]);
+    expect(navigationForMode("user").map((item) => item.href)).toEqual([
+      "/chat",
+      "/settings",
+    ]);
     expect(navigationForMode("admin").map((item) => item.href)).toEqual([
       "/",
       "/chat",
       "/admin/users",
+      "/admin/integrations",
       "/settings",
     ]);
   });

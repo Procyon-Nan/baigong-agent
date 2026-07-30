@@ -5,7 +5,7 @@ import { Pool } from "pg";
 import { readServerEnvironment } from "@/src/server/config/environment";
 import * as schema from "@/src/server/db/schema";
 
-type Database = NodePgDatabase<typeof schema>;
+export type Database = NodePgDatabase<typeof schema>;
 
 type DatabaseState = {
   pool?: Pool;
