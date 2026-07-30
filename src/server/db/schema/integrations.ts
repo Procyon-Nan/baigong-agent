@@ -11,6 +11,7 @@ import {
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
+import type { EmbeddedClientStatus } from "@/src/server/domain/integrations";
 import { authSessions, authUsers } from "./authentication";
 import { tenants } from "./tenants";
 
@@ -24,7 +25,9 @@ export const embeddedClients = pgTable(
     name: varchar("name", { length: 120 }).notNull(),
     clientId: varchar("client_id", { length: 64 }).notNull(),
     secretHash: text("secret_hash").notNull(),
-    status: varchar("status", { length: 16 }).notNull(),
+    status: varchar("status", { length: 16 })
+      .$type<EmbeddedClientStatus>()
+      .notNull(),
     allowedOrigins: jsonb("allowed_origins").$type<string[]>().notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()

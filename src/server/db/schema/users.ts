@@ -9,6 +9,11 @@ import {
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
+import type {
+  IdentitySource,
+  UserRole,
+  UserStatus,
+} from "@/src/server/domain/identity";
 import { authUsers } from "./authentication";
 import { tenants } from "./tenants";
 
@@ -21,9 +26,9 @@ export const userProfiles = pgTable(
     tenantId: uuid("tenant_id")
       .notNull()
       .references(() => tenants.id),
-    source: varchar("source", { length: 16 }).notNull(),
-    role: varchar("role", { length: 16 }).notNull(),
-    status: varchar("status", { length: 16 }).notNull(),
+    source: varchar("source", { length: 16 }).$type<IdentitySource>().notNull(),
+    role: varchar("role", { length: 16 }).$type<UserRole>().notNull(),
+    status: varchar("status", { length: 16 }).$type<UserStatus>().notNull(),
     displayName: varchar("display_name", { length: 120 }).notNull(),
     displayEmail: varchar("display_email", { length: 254 }),
     mustChangePassword: boolean("must_change_password")

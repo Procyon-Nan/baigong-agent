@@ -8,10 +8,13 @@ import {
   userProfiles,
 } from "@/src/server/db/schema";
 import { ApplicationError } from "@/src/server/errors";
+import type {
+  IdentitySource,
+  UserRole,
+} from "@/src/server/domain/identity";
 import { getAuth } from "./config";
 
-export type UserRole = "USER" | "ADMIN";
-export type IdentitySource = "LOCAL" | "EMBEDDED";
+export type { IdentitySource, UserRole } from "@/src/server/domain/identity";
 
 export type AuthenticatedPrincipal = {
   readonly userId: string;
@@ -22,6 +25,12 @@ export type AuthenticatedPrincipal = {
   readonly integrationId: string | null;
   readonly displayName: string;
   readonly mustChangePassword: boolean;
+};
+
+export type AdminPrincipal = AuthenticatedPrincipal & {
+  readonly role: "ADMIN";
+  readonly source: "LOCAL";
+  readonly integrationId: null;
 };
 
 export async function resolvePrincipal(
@@ -69,8 +78,8 @@ export async function resolvePrincipal(
   return {
     userId: profile.userId,
     tenantId: profile.tenantId,
-    role: profile.role as UserRole,
-    source: profile.source as IdentitySource,
+    role: profile.role,
+    source: profile.source,
     sessionId: authenticated.session.id,
     integrationId,
     displayName: profile.displayName,
@@ -95,11 +104,26 @@ export async function requirePrincipal(
   return principal;
 }
 
-export async function requireAdmin(
-  headers: Headers,
-): Promise<AuthenticatedPrincipal> {
+export async function requireAdmin(headers: Headers): Promise<AdminPrincipal> {
   const principal = await requirePrincipal(headers);
-  if (principal.role !== "ADMIN" || principal.source !== "LOCAL") {
+  assertAdminPrincipal(principal);
+  return principal;
+}
+
+export function isAdminPrincipal(
+  principal: AuthenticatedPrincipal,
+): principal is AdminPrincipal {
+  return (
+    principal.role === "ADMIN" &&
+    principal.source === "LOCAL" &&
+    principal.integrationId === null
+  );
+}
+
+export function assertAdminPrincipal(
+  principal: AuthenticatedPrincipal,
+): asserts principal is AdminPrincipal {
+  if (!isAdminPrincipal(principal)) {
     throw new ApplicationError({
       code: "ADMIN_REQUIRED",
       message: "无权访问该管理功能。",
@@ -107,7 +131,6 @@ export async function requireAdmin(
       expose: true,
     });
   }
-  return principal;
 }
 
 function unauthenticated(): ApplicationError {
