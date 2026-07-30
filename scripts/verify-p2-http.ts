@@ -1,9 +1,16 @@
 import "dotenv/config";
 
-import { closeDatabase } from "@/src/server/db/client";
-import { createLocalUser } from "@/src/server/users/service";
+import {
+  cleanupP2TestContext,
+  configureP2TestDatabase,
+  createP2TestContext,
+  type P2TestContext,
+} from "@/tests/support/p2-test-database";
+
+configureP2TestDatabase();
 
 const origin = process.env.P2_HTTP_BASE_URL ?? "http://localhost:3000";
+let sourceOctet = 20;
 
 type JsonResult = {
   response: Response;
@@ -55,20 +62,19 @@ function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
 
+let context: P2TestContext | undefined;
 try {
-  const initialAdministrator = await createLocalUser({
-    username: "http-admin",
-    email: "http-admin@example.com",
-    displayName: "HTTP Admin",
-    role: "ADMIN",
-  });
+  context = await createP2TestContext("http", { mustChangePassword: true });
+  const adminSource = `192.0.2.${randomOctet()}`;
+  context.loginSources.add(adminSource);
+  context.loginIdentifiers.add(context.administratorUsername);
   let result = await requestJson("/api/auth/local-login", {
     method: "POST",
     body: {
-      identifier: "HTTP-ADMIN",
-      password: initialAdministrator.temporaryPassword,
+      identifier: context.administratorUsername.toUpperCase(),
+      password: context.administratorPassword,
     },
-    headers: { origin, "x-real-ip": "192.0.2.21" },
+    headers: { origin, "x-real-ip": adminSource },
   });
   assert(
     result.response.status === 200,
@@ -89,8 +95,8 @@ try {
     method: "POST",
     cookie: adminCookie,
     body: {
-      currentPassword: initialAdministrator.temporaryPassword,
-      newPassword: "http admin secure password",
+      currentPassword: context.administratorPassword,
+      newPassword: `HTTP admin ${context.suffix} password`,
     },
     headers: { origin },
   });
@@ -100,8 +106,8 @@ try {
     method: "POST",
     cookie: adminCookie,
     body: {
-      username: "http-user",
-      email: "http-user@example.com",
+      username: `user-${context.suffix}`,
+      email: `user-${context.suffix}@example.com`,
       displayName: "HTTP User",
       role: "USER",
     },
@@ -114,10 +120,14 @@ try {
     "普通用户创建或临时密码保护失败。",
   );
   const userPassword = result.data.temporaryPassword as string;
+  const userIdentifier = `user-${context.suffix}@example.com`;
+  const userSource = `192.0.2.${randomOctet()}`;
+  context.loginSources.add(userSource);
+  context.loginIdentifiers.add(userIdentifier);
   const userLogin = await requestJson("/api/auth/local-login", {
     method: "POST",
-    body: { identifier: "http-user@example.com", password: userPassword },
-    headers: { origin, "x-real-ip": "192.0.2.22" },
+    body: { identifier: userIdentifier, password: userPassword },
+    headers: { origin, "x-real-ip": userSource },
   });
   assert(userLogin.response.status === 200, "普通用户登录失败。");
   const userCookie = userLogin.response.headers.get("set-cookie");
@@ -127,7 +137,7 @@ try {
     cookie: userCookie,
     body: {
       currentPassword: userPassword,
-      newPassword: "http user secure password",
+      newPassword: `HTTP user ${context.suffix} password`,
     },
     headers: { origin },
   });
@@ -143,8 +153,8 @@ try {
     method: "POST",
     cookie: adminCookie,
     body: {
-      username: "csrf-user",
-      email: "csrf@example.com",
+      username: `csrf-${context.suffix}`,
+      email: `csrf-${context.suffix}@example.com`,
       displayName: "CSRF",
       role: "USER",
     },
@@ -155,10 +165,46 @@ try {
     "同源请求保护失败。",
   );
 
+  result = await requestJson("/api/admin/users", {
+    method: "POST",
+    cookie: adminCookie,
+    body: {
+      username: `extra-${context.suffix}`,
+      email: `extra-${context.suffix}@example.com`,
+      displayName: "Invalid Extra Field",
+      role: "USER",
+      unexpected: true,
+    },
+    headers: { origin },
+  });
+  assert(
+    result.response.status === 400 &&
+      result.data.error?.code === "INVALID_REQUEST_BODY",
+    "未知请求字段未被严格拒绝。",
+  );
+  const malformed = await fetch(`${origin}/api/admin/users`, {
+    method: "POST",
+    headers: {
+      cookie: adminCookie,
+      origin,
+      "content-type": "application/json",
+    },
+    body: "{",
+  });
+  const malformedBody = (await malformed.json()) as ApiData;
+  assert(
+    malformed.status === 400 &&
+      malformedBody.error?.code === "INVALID_REQUEST_BODY",
+    "无效 JSON 未返回统一请求错误。",
+  );
+
   result = await requestJson("/api/admin/integrations", {
     method: "POST",
     cookie: adminCookie,
-    body: { name: "HTTP Host", allowedOrigins: ["http://localhost:4100"] },
+    body: {
+      name: `HTTP Host ${context.suffix}`,
+      allowedOrigins: ["http://localhost:4100"],
+    },
     headers: { origin },
   });
   assert(
@@ -180,15 +226,17 @@ try {
   );
 
   const authorization = `Basic ${Buffer.from(`${client.clientId}:${clientSecret}`).toString("base64")}`;
+  const ticketSource = `192.0.2.${randomOctet()}`;
+  context.loginSources.add(`embedded-client:${ticketSource}`);
   result = await requestJson("/api/embed/tickets", {
     method: "POST",
     body: {
-      externalUserId: "http-external",
+      externalUserId: `external-${context.suffix}`,
       origin: "http://localhost:4100",
       displayName: "HTTP Embedded",
-      displayEmail: "http-admin@example.com",
+      displayEmail: context.administratorEmail,
     },
-    headers: { authorization, "x-real-ip": "192.0.2.23" },
+    headers: { authorization, "x-real-ip": ticketSource },
   });
   assert(
     result.response.status === 201 &&
@@ -218,15 +266,15 @@ try {
     "一次性票据重复消费未失败关闭。",
   );
 
+  const renewalSource = `192.0.2.${randomOctet()}`;
+  context.loginSources.add(`embedded-client:${renewalSource}`);
   result = await requestJson("/api/embed/tickets", {
     method: "POST",
     body: {
-      externalUserId: "http-external",
+      externalUserId: `external-${context.suffix}`,
       origin: "http://localhost:4100",
-      displayName: "HTTP Embedded",
-      displayEmail: "http-admin@example.com",
     },
-    headers: { authorization, "x-real-ip": "192.0.2.23" },
+    headers: { authorization, "x-real-ip": renewalSource },
   });
   const renewalTicket = result.data.ticket as string;
   result = await requestJson("/api/embed/exchange", {
@@ -295,8 +343,10 @@ try {
 
   console.info(
     JSON.stringify({
+      testSuffix: context.suffix,
       localLogin: "ok",
       forcedPasswordChange: "ok",
+      requestValidation: "strict",
       csrf: "ok",
       rbac: "ok",
       adminPages: "ok",
@@ -308,5 +358,12 @@ try {
     }),
   );
 } finally {
+  if (context) await cleanupP2TestContext(context);
+  const { closeDatabase } = await import("@/src/server/db/client");
   await closeDatabase();
+}
+
+function randomOctet(): number {
+  sourceOctet += 1;
+  return sourceOctet;
 }
