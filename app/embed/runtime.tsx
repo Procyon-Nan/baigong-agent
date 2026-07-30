@@ -13,6 +13,7 @@ type RuntimeState =
 export function EmbedRuntime() {
   const token = useRef<string | null>(null);
   const trustedHostOrigin = useRef<string | null>(null);
+  const exchanging = useRef(false);
   const [state, setState] = useState<RuntimeState>({ status: "waiting" });
 
   useEffect(() => {
@@ -25,16 +26,19 @@ export function EmbedRuntime() {
     async function receiveTicket(event: MessageEvent) {
       if (event.source !== window.parent || !isTicketMessage(event.data))
         return;
+      if (exchanging.current) return;
       if (
         trustedHostOrigin.current &&
         trustedHostOrigin.current !== event.origin
       )
         return;
+      exchanging.current = true;
       setState({ status: "exchanging" });
+      const previousToken = token.current;
       const headers: Record<string, string> = {
         "content-type": "application/json",
       };
-      if (token.current) headers.authorization = `Bearer ${token.current}`;
+      if (previousToken) headers.authorization = `Bearer ${previousToken}`;
       try {
         const response = await fetch("/api/embed/exchange", {
           method: "POST",
@@ -67,22 +71,22 @@ export function EmbedRuntime() {
           event.origin,
         );
       } catch {
+        const activeToken = token.current ?? previousToken;
+        if (activeToken) await revokeToken(activeToken);
         token.current = null;
         setState({ status: "failed" });
         window.parent.postMessage(
           { type: "baigong-agent.session", status: "failed" },
           event.origin,
         );
+      } finally {
+        exchanging.current = false;
       }
     }
 
     function revoke() {
       if (!token.current) return;
-      void fetch("/api/embed/revoke", {
-        method: "POST",
-        headers: { authorization: `Bearer ${token.current}` },
-        keepalive: true,
-      });
+      void revokeToken(token.current, true);
       token.current = null;
     }
 
@@ -137,6 +141,18 @@ export function EmbedRuntime() {
       </div>
     </section>
   );
+}
+
+async function revokeToken(token: string, keepalive = false): Promise<void> {
+  try {
+    await fetch("/api/embed/revoke", {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+      keepalive,
+    });
+  } catch {
+    // Revocation is best effort when the network or page lifecycle is ending.
+  }
 }
 
 function isTicketMessage(
