@@ -1,5 +1,7 @@
 import { assertSameOriginRequest } from "@/src/server/auth/origin";
 import { requireAdmin } from "@/src/server/authorization";
+import { createEmbeddedClientRequestSchema } from "@/src/server/http/p2-schemas";
+import { parseJsonBody } from "@/src/server/http/request";
 import { handleRoute, jsonResponse } from "@/src/server/http/responses";
 import {
   createEmbeddedClient,
@@ -10,7 +12,7 @@ export async function GET(request: Request): Promise<Response> {
   return handleRoute(async () => {
     const principal = await requireAdmin(request.headers);
     return jsonResponse({
-      clients: await listEmbeddedClients(principal.tenantId),
+      clients: await listEmbeddedClients(principal),
     });
   });
 }
@@ -19,15 +21,11 @@ export async function POST(request: Request): Promise<Response> {
   return handleRoute(async () => {
     assertSameOriginRequest(request);
     const principal = await requireAdmin(request.headers);
-    const body = (await request.json()) as Record<string, unknown>;
-    const result = await createEmbeddedClient(principal, {
-      name: typeof body.name === "string" ? body.name : "",
-      allowedOrigins: Array.isArray(body.allowedOrigins)
-        ? body.allowedOrigins.filter(
-            (origin): origin is string => typeof origin === "string",
-          )
-        : [],
-    });
+    const body = await parseJsonBody(
+      request,
+      createEmbeddedClientRequestSchema,
+    );
+    const result = await createEmbeddedClient(principal, body);
     return jsonResponse(result, { status: 201 });
   });
 }
