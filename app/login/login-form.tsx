@@ -2,6 +2,7 @@
 
 import { ArrowRight, LoaderCircle } from "lucide-react";
 import { useState, type FormEvent } from "react";
+import { clientErrorMessage, requestJson } from "@/app/lib/api-client";
 import styles from "./login.module.css";
 
 export function LoginForm() {
@@ -14,24 +15,20 @@ export function LoginForm() {
     setError("");
     const form = new FormData(event.currentTarget);
     try {
-      const response = await fetch("/api/auth/local-login", {
+      const result = await requestJson<{
+        user?: { mustChangePassword?: boolean };
+      }>("/api/auth/local-login", {
         method: "POST",
-        headers: { "content-type": "application/json" },
         body: JSON.stringify({
           identifier: form.get("identifier"),
           password: form.get("password"),
         }),
       });
-      const result = (await response.json()) as {
-        user?: { mustChangePassword?: boolean };
-        error?: { message?: string };
-      };
-      if (!response.ok) throw new Error(result.error?.message || "登录失败。 ");
       window.location.assign(
         result.user?.mustChangePassword ? "/change-password" : "/",
       );
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "登录失败。");
+      setError(clientErrorMessage(reason, "登录失败。"));
       setPending(false);
     }
   }

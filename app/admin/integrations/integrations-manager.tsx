@@ -1,8 +1,8 @@
 "use client";
 
 import { KeyRound, Pencil, Plus, Power, RotateCw, Trash2 } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
+import { useAdminRequest } from "@/app/admin/use-admin-request";
 import styles from "../admin.module.css";
 
 type ClientRow = {
@@ -20,44 +20,25 @@ export function IntegrationsManager({
 }: {
   readonly clients: ClientRow[];
 }) {
-  const router = useRouter();
-  const [pending, setPending] = useState("");
+  const { error, pending, request } = useAdminRequest();
   const [secret, setSecret] = useState("");
-  const [error, setError] = useState("");
-
-  async function request(path: string, init: RequestInit) {
-    setPending(path);
-    setError("");
-    const response = await fetch(path, {
-      ...init,
-      headers: { "content-type": "application/json", ...init.headers },
-    });
-    const result = (await response.json()) as {
-      error?: { message?: string };
-      clientSecret?: string;
-    };
-    setPending("");
-    if (!response.ok) {
-      setError(result.error?.message || "操作失败。");
-      return null;
-    }
-    router.refresh();
-    return result;
-  }
 
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const result = await request("/api/admin/integrations", {
-      method: "POST",
-      body: JSON.stringify({
-        name: form.get("name"),
-        allowedOrigins: String(form.get("allowedOrigins") || "")
-          .split(/\r?\n/)
-          .map((value) => value.trim())
-          .filter(Boolean),
-      }),
-    });
+    const result = await request<{ clientSecret?: string }>(
+      "/api/admin/integrations",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          name: form.get("name"),
+          allowedOrigins: String(form.get("allowedOrigins") || "")
+            .split(/\r?\n/)
+            .map((value) => value.trim())
+            .filter(Boolean),
+        }),
+      },
+    );
     if (result?.clientSecret) {
       setSecret(result.clientSecret);
       event.currentTarget.reset();
@@ -133,7 +114,9 @@ export function IntegrationsManager({
                         className={styles.iconButton}
                         disabled={Boolean(pending)}
                         onClick={async () => {
-                          const result = await request(
+                          const result = await request<{
+                            clientSecret?: string;
+                          }>(
                             `/api/admin/integrations/${client.id}/rotate-secret`,
                             { method: "POST" },
                           );

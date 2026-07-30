@@ -2,6 +2,7 @@
 
 import { KeyRound, LoaderCircle } from "lucide-react";
 import { useState, type FormEvent } from "react";
+import { clientErrorMessage, requestJson } from "@/app/lib/api-client";
 import styles from "./page.module.css";
 
 export function ChangePasswordForm() {
@@ -22,25 +23,24 @@ export function ChangePasswordForm() {
       setPending(false);
       return;
     }
-    const response = await fetch("/api/auth/change-password", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        currentPassword: form.get("currentPassword"),
-        newPassword,
-      }),
-    });
-    const result = (await response.json()) as { error?: { message?: string } };
-    if (!response.ok) {
+    try {
+      await requestJson<{ success: true }>("/api/auth/change-password", {
+        method: "POST",
+        body: JSON.stringify({
+          currentPassword: form.get("currentPassword"),
+          newPassword,
+        }),
+      });
+      setMessage({ kind: "success", text: "密码已更新，正在返回工作台。" });
+      window.setTimeout(() => window.location.assign("/"), 500);
+    } catch (reason) {
       setMessage({
         kind: "error",
-        text: result.error?.message || "密码修改失败。",
+        text: clientErrorMessage(reason, "密码修改失败。"),
       });
+    } finally {
       setPending(false);
-      return;
     }
-    setMessage({ kind: "success", text: "密码已更新，正在返回工作台。" });
-    window.setTimeout(() => window.location.assign("/"), 500);
   }
 
   return (

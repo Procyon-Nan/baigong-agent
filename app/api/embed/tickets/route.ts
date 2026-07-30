@@ -1,23 +1,18 @@
 import { parseClientCredentials } from "@/src/server/integrations/credentials";
 import { issueEmbeddedTicket } from "@/src/server/integrations/service";
 import { requestSource } from "@/src/server/auth/login-protection";
+import { issueEmbeddedTicketRequestSchema } from "@/src/server/http/p2-schemas";
+import { parseJsonBody } from "@/src/server/http/request";
 import { handleRoute, jsonResponse } from "@/src/server/http/responses";
 
 export async function POST(request: Request): Promise<Response> {
   return handleRoute(async () => {
     const credentials = parseClientCredentials(request);
-    const body = (await request.json()) as Record<string, unknown>;
+    const body = await parseJsonBody(request, issueEmbeddedTicketRequestSchema);
     const result = await issueEmbeddedTicket({
       requestSource: requestSource(request),
       ...credentials,
-      externalUserId:
-        typeof body.externalUserId === "string" ? body.externalUserId : "",
-      origin: typeof body.origin === "string" ? body.origin : "",
-      agentId: typeof body.agentId === "string" ? body.agentId : undefined,
-      displayName:
-        typeof body.displayName === "string" ? body.displayName : undefined,
-      displayEmail:
-        typeof body.displayEmail === "string" ? body.displayEmail : undefined,
+      ...body,
     });
     return jsonResponse(result, { status: 201 });
   });

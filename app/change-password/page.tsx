@@ -1,21 +1,15 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { ApplicationFrame } from "@/app/components/application-frame";
-import { requirePrincipal } from "@/src/server/authorization";
+import { resolvePrincipal } from "@/src/server/authorization";
 import { ChangePasswordForm } from "./change-password-form";
 import styles from "./page.module.css";
 
 export const dynamic = "force-dynamic";
 
 export default async function ChangePasswordPage() {
-  let principal;
-  try {
-    principal = await requirePrincipal(new Headers(await headers()), {
-      allowPasswordChange: true,
-    });
-  } catch {
-    redirect("/login");
-  }
+  const principal = await resolvePrincipal(new Headers(await headers()));
+  if (!principal) redirect("/login");
   if (principal.source !== "LOCAL") redirect("/");
 
   return (

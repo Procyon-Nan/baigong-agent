@@ -119,6 +119,14 @@
   color: #ffffff;
 }
 
+.logoutError {
+  overflow: hidden;
+  color: #ffb4ab;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .environmentDot {
   width: 7px;
   height: 7px;

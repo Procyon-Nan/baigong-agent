@@ -1,11 +1,16 @@
 import { resolvePrincipal } from "@/src/server/authorization";
 import { ApplicationError } from "@/src/server/errors";
+import { exchangeEmbeddedTicketRequestSchema } from "@/src/server/http/p2-schemas";
+import { parseJsonBody } from "@/src/server/http/request";
 import { handleRoute, jsonResponse } from "@/src/server/http/responses";
 import { exchangeEmbeddedTicket } from "@/src/server/integrations/service";
 
 export async function POST(request: Request): Promise<Response> {
   return handleRoute(async () => {
-    const body = (await request.json()) as Record<string, unknown>;
+    const body = await parseJsonBody(
+      request,
+      exchangeEmbeddedTicketRequestSchema,
+    );
     const hasPreviousToken = request.headers.has("authorization");
     const previousPrincipal = hasPreviousToken
       ? await resolvePrincipal(request.headers)
@@ -19,8 +24,8 @@ export async function POST(request: Request): Promise<Response> {
       });
     }
     const result = await exchangeEmbeddedTicket({
-      ticket: typeof body.ticket === "string" ? body.ticket : "",
-      origin: typeof body.origin === "string" ? body.origin : "",
+      ticket: body.ticket,
+      origin: body.origin,
       previousPrincipal,
     });
     return jsonResponse({

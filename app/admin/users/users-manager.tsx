@@ -1,8 +1,8 @@
 "use client";
 
 import { KeyRound, Plus, Power, RefreshCw } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
+import { useAdminRequest } from "@/app/admin/use-admin-request";
 import styles from "../admin.module.css";
 
 type UserRow = {
@@ -19,38 +19,19 @@ type UserRow = {
 };
 
 export function UsersManager({ users }: { readonly users: UserRow[] }) {
-  const router = useRouter();
-  const [pending, setPending] = useState("");
+  const { error, pending, request } = useAdminRequest();
   const [notice, setNotice] = useState("");
-  const [error, setError] = useState("");
-
-  async function request(path: string, init: RequestInit) {
-    setPending(path);
-    setError("");
-    const response = await fetch(path, {
-      ...init,
-      headers: { "content-type": "application/json", ...init.headers },
-    });
-    const result = (await response.json()) as {
-      error?: { message?: string };
-      temporaryPassword?: string;
-    };
-    setPending("");
-    if (!response.ok) {
-      setError(result.error?.message || "操作失败。");
-      return null;
-    }
-    router.refresh();
-    return result;
-  }
 
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const result = await request("/api/admin/users", {
-      method: "POST",
-      body: JSON.stringify(Object.fromEntries(form)),
-    });
+    const result = await request<{ temporaryPassword?: string }>(
+      "/api/admin/users",
+      {
+        method: "POST",
+        body: JSON.stringify(Object.fromEntries(form)),
+      },
+    );
     if (result?.temporaryPassword) {
       setNotice(`临时密码（仅显示一次）：${result.temporaryPassword}`);
       event.currentTarget.reset();
@@ -150,7 +131,9 @@ export function UsersManager({ users }: { readonly users: UserRow[] }) {
                             className={styles.iconButton}
                             disabled={Boolean(pending)}
                             onClick={async () => {
-                              const result = await request(
+                              const result = await request<{
+                                temporaryPassword?: string;
+                              }>(
                                 `/api/admin/users/${user.id}/reset-password`,
                                 { method: "POST" },
                               );
