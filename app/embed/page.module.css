@@ -49,10 +49,6 @@
   font-size: 11px;
 }
 
-.successIcon {
-  color: var(--success);
-}
-
 .failureIcon {
   color: var(--danger);
 }

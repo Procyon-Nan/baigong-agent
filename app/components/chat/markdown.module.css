@@ -1,0 +1,118 @@
+.markdown {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  line-height: 1.65;
+}
+
+.markdown > :first-child {
+  margin-top: 0;
+}
+
+.markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.markdown p,
+.markdown ul,
+.markdown ol,
+.markdown blockquote,
+.markdown table,
+.markdown pre {
+  margin: 0.65em 0;
+}
+
+.markdown ul,
+.markdown ol {
+  padding-left: 1.5em;
+}
+
+.markdown a {
+  color: var(--accent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+.markdown blockquote {
+  padding-left: 12px;
+  border-left: 3px solid var(--border-strong);
+  color: var(--text-muted);
+}
+
+.markdown table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+}
+
+.markdown th,
+.markdown td {
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  text-align: left;
+}
+
+.markdown :not(pre) > code {
+  padding: 2px 4px;
+  border-radius: 4px;
+  background: #edf1f3;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.9em;
+}
+
+.codeBlock {
+  overflow: hidden;
+  border: 1px solid #36434a;
+  border-radius: 6px;
+  background: #20292e;
+  color: #e8eef1;
+}
+
+.codeHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 32px;
+  padding: 0 7px 0 11px;
+  border-bottom: 1px solid #3b484f;
+  color: #aab8bf;
+  font-size: 10px;
+}
+
+.codeHeader button {
+  display: grid;
+  width: 27px;
+  height: 27px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #cbd5da;
+  cursor: pointer;
+}
+
+.codeHeader button:hover {
+  background: #344148;
+  color: #ffffff;
+}
+
+.codeBlock pre {
+  margin: 0;
+  padding: 13px;
+  overflow-x: auto;
+}
+
+.codeBlock code {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 11px;
+  white-space: pre;
+}
+
+.blockedImage {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-muted);
+  font-size: 0.9em;
+}

@@ -12,8 +12,8 @@ describe("navigation model", () => {
         href,
       })),
     ).toEqual([
-      { href: "/", enabled: true },
-      { href: "/chat", enabled: false },
+      { href: "/", enabled: false },
+      { href: "/admin/models", enabled: false },
       { href: "/admin/users", enabled: false },
       { href: "/admin/integrations", enabled: false },
       { href: "/settings", enabled: false },
@@ -22,12 +22,12 @@ describe("navigation model", () => {
 
   it("selects role-specific destinations without treating them as authorization", () => {
     expect(navigationForMode("user").map((item) => item.href)).toEqual([
-      "/chat",
+      "/",
       "/settings",
     ]);
     expect(navigationForMode("admin").map((item) => item.href)).toEqual([
       "/",
-      "/chat",
+      "/admin/models",
       "/admin/users",
       "/admin/integrations",
       "/settings",
@@ -36,7 +36,11 @@ describe("navigation model", () => {
 
   it("matches complete route segments", () => {
     expect(isNavigationItemActive("/", "/")).toBe(true);
-    expect(isNavigationItemActive("/chat/session-1", "/chat")).toBe(true);
-    expect(isNavigationItemActive("/chat-history", "/chat")).toBe(false);
+    expect(isNavigationItemActive("/admin/models", "/admin/models")).toBe(
+      true,
+    );
+    expect(isNavigationItemActive("/admin/model-settings", "/admin/models")).toBe(
+      false,
+    );
   });
 });

@@ -1,7 +1,7 @@
 export type NavigationMode = "setup" | "user" | "admin";
 export type NavigationIcon =
-  | "dashboard"
   | "chat"
+  | "models"
   | "users"
   | "integrations"
   | "settings";
@@ -16,18 +16,18 @@ export type NavigationItem = {
 
 const navigationItems: readonly NavigationItem[] = [
   {
-    label: "系统状态",
-    href: "/",
-    icon: "dashboard",
-    visibleIn: ["setup", "admin"],
-    enabledIn: ["setup", "admin"],
-  },
-  {
     label: "对话",
-    href: "/chat",
+    href: "/",
     icon: "chat",
     visibleIn: ["setup", "user", "admin"],
     enabledIn: ["user", "admin"],
+  },
+  {
+    label: "模型配置",
+    href: "/admin/models",
+    icon: "models",
+    visibleIn: ["setup", "admin"],
+    enabledIn: ["admin"],
   },
   {
     label: "用户",

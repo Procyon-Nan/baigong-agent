@@ -1,13 +1,20 @@
 "use client";
 
-import { LoaderCircle, ShieldCheck, ShieldX } from "lucide-react";
+import { LoaderCircle, ShieldX } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { ChatWorkspace } from "@/app/components/chat/chat-workspace";
 import styles from "./page.module.css";
 
 type RuntimeState =
   | { status: "waiting" }
   | { status: "exchanging" }
-  | { status: "authenticated"; displayName: string; expiresAt: string }
+  | {
+      status: "authenticated";
+      displayName: string;
+      expiresAt: string;
+      modelAvailable: boolean;
+      contextWindowTokens: number | null;
+    }
   | { status: "failed" };
 
 export function EmbedRuntime() {
@@ -33,8 +40,8 @@ export function EmbedRuntime() {
       )
         return;
       exchanging.current = true;
-      setState({ status: "exchanging" });
       const previousToken = token.current;
+      if (!previousToken) setState({ status: "exchanging" });
       const headers: Record<string, string> = {
         "content-type": "application/json",
       };
@@ -56,11 +63,14 @@ export function EmbedRuntime() {
         if (!response.ok || !result.token || !result.expiresAt)
           throw new Error("exchange failed");
         token.current = result.token;
+        const model = await readModelSettings(result.token);
         trustedHostOrigin.current = event.origin;
         setState({
           status: "authenticated",
           displayName: result.user?.displayName || "嵌入用户",
           expiresAt: result.expiresAt,
+          modelAvailable: model.available,
+          contextWindowTokens: model.contextWindowTokens,
         });
         window.parent.postMessage(
           {
@@ -104,19 +114,31 @@ export function EmbedRuntime() {
     };
   }, []);
 
+  async function terminateSession() {
+    const activeToken = token.current;
+    if (activeToken) await revokeToken(activeToken);
+    token.current = null;
+    setState({ status: "failed" });
+    if (trustedHostOrigin.current) {
+      window.parent.postMessage(
+        { type: "baigong-agent.session", status: "failed" },
+        trustedHostOrigin.current,
+      );
+    }
+  }
+
   if (state.status === "authenticated") {
     return (
-      <section className={styles.state}>
-        <ShieldCheck
-          aria-hidden="true"
-          className={styles.successIcon}
-          size={28}
-        />
-        <div>
-          <strong>{state.displayName}</strong>
-          <span>身份已验证</span>
-        </div>
-      </section>
+      <ChatWorkspace
+        authorizationToken={token.current ?? undefined}
+        compact
+        contextWindowTokens={state.contextWindowTokens}
+        displayName={state.displayName}
+        modelAvailable={state.modelAvailable}
+        onAuthenticationExpired={() => {
+          void terminateSession();
+        }}
+      />
     );
   }
   if (state.status === "failed") {
@@ -153,6 +175,31 @@ async function revokeToken(token: string, keepalive = false): Promise<void> {
   } catch {
     // Revocation is best effort when the network or page lifecycle is ending.
   }
+}
+
+async function readModelSettings(token: string): Promise<{
+  readonly available: boolean;
+  readonly contextWindowTokens: number | null;
+}> {
+  const response = await fetch("/api/conversations/settings", {
+    headers: { authorization: `Bearer ${token}` },
+  });
+  const payload = (await response.json()) as {
+    model?: { available?: unknown; contextWindowTokens?: unknown };
+  };
+  if (
+    !response.ok ||
+    typeof payload.model?.available !== "boolean" ||
+    (payload.model.contextWindowTokens !== null &&
+      (!Number.isSafeInteger(payload.model.contextWindowTokens) ||
+        (payload.model.contextWindowTokens as number) <= 0))
+  ) {
+    throw new Error("model settings unavailable");
+  }
+  return {
+    available: payload.model.available,
+    contextWindowTokens: payload.model.contextWindowTokens as number | null,
+  };
 }
 
 function isTicketMessage(

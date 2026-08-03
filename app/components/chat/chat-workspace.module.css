@@ -1,0 +1,502 @@
+.chatLayout {
+  width: 100%;
+  min-width: 0;
+}
+
+.detailsOpen {
+  display: grid;
+  grid-template-columns:
+    minmax(360px, 1fr) 6px
+    minmax(300px, var(--execution-width));
+}
+
+.workspace {
+  display: grid;
+  grid-template-rows: 58px minmax(0, 1fr) auto;
+  width: 100%;
+  height: calc(100dvh - 90px);
+  min-height: 540px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.detailsOpen .workspace {
+  width: auto;
+}
+
+.compact {
+  height: calc(100dvh - 54px);
+  min-height: 360px;
+  border: 0;
+  border-radius: 0;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.headerActions,
+.executionActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.agentIdentity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.agentIdentity strong,
+.agentIdentity small {
+  display: block;
+  letter-spacing: 0;
+}
+
+.agentIdentity strong {
+  font-size: 13px;
+}
+
+.agentIdentity small {
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.agentIcon,
+.messageAvatar {
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.agentIcon {
+  width: 34px;
+  height: 34px;
+}
+
+.iconButton,
+.copyButton,
+.retryButton,
+.sendButton {
+  display: grid;
+  padding: 0;
+  place-items: center;
+  cursor: pointer;
+}
+
+.iconButton {
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: #ffffff;
+  color: var(--text-muted);
+}
+
+.iconButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.executionResizer {
+  height: calc(100dvh - 90px);
+  min-height: 540px;
+  cursor: col-resize;
+  background: transparent;
+  touch-action: none;
+}
+
+.executionResizer:hover,
+.executionResizer:focus-visible {
+  background: var(--accent-soft);
+  outline: 0;
+}
+
+.executionPanel {
+  display: grid;
+  grid-template-rows: 58px auto minmax(0, 1fr);
+  height: calc(100dvh - 90px);
+  min-width: 0;
+  min-height: 540px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.executionHeader {
+  display: flex;
+  padding: 0 10px 0 14px;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+}
+
+.executionHeader strong,
+.executionHeader small {
+  display: block;
+  letter-spacing: 0;
+}
+
+.executionHeader strong {
+  font-size: 13px;
+}
+
+.executionHeader small {
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.detailIconButton {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  place-items: center;
+  cursor: pointer;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.detailIconButton:hover,
+.detailIconButton:focus-visible {
+  background: #edf1f3;
+  color: var(--accent);
+}
+
+.detailIconButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.followControl {
+  display: flex;
+  min-height: 36px;
+  padding: 0 12px;
+  align-items: center;
+  gap: 7px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.followControl input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.executionEvents {
+  min-height: 0;
+  padding: 8px;
+  overflow-y: auto;
+}
+
+.executionEmpty {
+  margin: 20px 0;
+  color: var(--text-muted);
+  font-size: 11px;
+  text-align: center;
+}
+
+.rawEvent {
+  border-bottom: 1px solid var(--border);
+}
+
+.rawEvent summary {
+  display: grid;
+  grid-template-columns: 14px 48px minmax(0, 1fr) 68px;
+  min-height: 36px;
+  padding: 7px 5px;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  list-style: none;
+  font-size: 10px;
+}
+
+.eventChevron {
+  color: var(--text-muted);
+  transition: transform 120ms ease;
+}
+
+.rawEvent[open] .eventChevron {
+  transform: rotate(90deg);
+}
+
+.rawEvent summary strong {
+  overflow: hidden;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rawEvent time,
+.eventIndex {
+  color: var(--text-muted);
+}
+
+.rawEvent time {
+  text-align: right;
+}
+
+.rawEvent pre {
+  max-width: 100%;
+  margin: 0 4px 8px;
+  padding: 9px;
+  overflow: auto;
+  border-radius: 4px;
+  background: #171b1d;
+  color: #e8eef0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.messages {
+  min-height: 0;
+  padding: 18px clamp(12px, 4vw, 48px);
+  overflow-y: auto;
+  scroll-behavior: smooth;
+}
+
+.emptyState {
+  display: grid;
+  min-height: 100%;
+  place-content: center;
+  justify-items: center;
+  gap: 9px;
+  color: var(--accent);
+}
+
+.emptyState strong {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.message {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) 28px;
+  gap: 10px;
+  width: min(100%, 780px);
+  margin: 0 auto 20px;
+  align-items: start;
+}
+
+.message[data-role="user"] .messageBody {
+  padding: 10px 12px;
+  border: 1px solid #d5e5e9;
+  border-radius: 7px;
+  background: #f0f7f8;
+}
+
+.messageAvatar {
+  width: 30px;
+  height: 30px;
+}
+
+.message[data-role="user"] .messageAvatar {
+  background: #edf0f2;
+  color: #56656d;
+}
+
+.messageBody {
+  min-width: 0;
+  padding: 5px 0;
+  font-size: 13px;
+}
+
+.copyButton,
+.retryButton {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.copyButton {
+  opacity: 0;
+}
+
+.message:hover .copyButton,
+.copyButton:focus-visible {
+  opacity: 1;
+}
+
+.copyButton:hover,
+.retryButton:hover {
+  background: #edf1f3;
+  color: var(--accent);
+}
+
+.streamingCursor {
+  display: inline-block;
+  width: 6px;
+  height: 13px;
+  margin-left: 3px;
+  background: var(--accent);
+  animation: blink 1s step-end infinite;
+  vertical-align: -2px;
+}
+
+.composerArea {
+  padding: 10px clamp(12px, 4vw, 48px) 12px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-subtle);
+}
+
+.composer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 38px;
+  gap: 8px;
+  width: min(100%, 780px);
+  margin: 0 auto;
+  align-items: end;
+}
+
+.composer textarea {
+  width: 100%;
+  min-height: 62px;
+  max-height: 180px;
+  padding: 10px 11px;
+  resize: vertical;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: #ffffff;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.composer textarea:disabled {
+  background: #edf0f2;
+}
+
+.sendButton {
+  width: 38px;
+  height: 38px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.sendButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.characterCount {
+  display: block;
+  width: min(100%, 780px);
+  margin: 5px auto 0;
+  color: var(--text-muted);
+  font-size: 9px;
+  text-align: right;
+}
+
+.errorRow {
+  display: flex;
+  width: min(100%, 780px);
+  margin: 0 auto 8px;
+  align-items: center;
+  gap: 6px;
+}
+
+.error {
+  flex: 1;
+  margin: 0 auto 8px;
+  color: var(--danger);
+  font-size: 11px;
+}
+
+.connectionStatus {
+  width: min(100%, 780px);
+  margin: 0 auto 8px;
+  color: var(--warning);
+  font-size: 11px;
+}
+
+.errorRow .error {
+  margin: 0;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .workspace {
+    height: calc(100dvh - 190px);
+    min-height: 480px;
+  }
+
+  .compact {
+    height: calc(100dvh - 54px);
+    min-height: 360px;
+  }
+
+  .messages,
+  .composerArea {
+    padding-right: 10px;
+    padding-left: 10px;
+  }
+
+  .message {
+    grid-template-columns: 28px minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .messageAvatar {
+    width: 28px;
+    height: 28px;
+  }
+
+  .copyButton {
+    grid-column: 2;
+    opacity: 1;
+  }
+}
+
+@media (max-width: 900px) {
+  .detailsOpen {
+    display: block;
+  }
+
+  .executionResizer {
+    display: none;
+  }
+
+  .executionPanel {
+    position: fixed;
+    z-index: 50;
+    inset: 0;
+    width: 100%;
+    height: 100dvh;
+    min-height: 0;
+    border: 0;
+    border-radius: 0;
+  }
+}

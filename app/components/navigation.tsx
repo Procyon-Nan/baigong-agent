@@ -2,8 +2,8 @@
 
 import {
   Bot,
+  Boxes,
   KeyRound,
-  LayoutDashboard,
   LockKeyhole,
   Settings,
   UsersRound,
@@ -19,12 +19,12 @@ import {
 import styles from "./application-frame.module.css";
 
 const navigationIcons = {
-  dashboard: LayoutDashboard,
   chat: Bot,
+  models: Boxes,
   users: UsersRound,
   integrations: KeyRound,
   settings: Settings,
-} satisfies Record<NavigationIcon, typeof LayoutDashboard>;
+} satisfies Record<NavigationIcon, typeof Bot>;
 
 export function Navigation({ mode }: { readonly mode: NavigationMode }) {
   const pathname = usePathname();
