@@ -15,7 +15,11 @@ import type { ConversationSubmission, EveGateway } from "./types";
 export async function continueConversation(
   principal: AuthenticatedPrincipal,
   conversationId: string,
-  input: { readonly message: string; readonly requestId: string },
+  input: {
+    readonly message: string;
+    readonly requestId: string;
+    readonly retryOfTurnId?: string;
+  },
   dependencies: {
     readonly repository?: ConversationContinuationRepository;
     readonly eve?: EveGateway;
@@ -28,7 +32,7 @@ export async function continueConversation(
   const reservation = await repository.reserveContinuation(
     principal,
     conversationId,
-    input.requestId,
+    input,
   );
   if (reservation.kind === "duplicate") {
     return {
@@ -68,7 +72,7 @@ export async function continueConversation(
       sessionId: reserved.eveSessionId,
       continuationToken,
       streamIndex: reserved.nextStreamIndex,
-      message: input.message,
+      message: reservation.message,
     });
   } catch (error) {
     if (error instanceof EveGatewayRejectedError) {

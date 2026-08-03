@@ -91,7 +91,11 @@ export type ReservedConversationTurn = {
 };
 
 export type TurnReservation =
-  | { readonly kind: "reserved"; readonly value: ReservedConversationTurn }
+  | {
+      readonly kind: "reserved";
+      readonly value: ReservedConversationTurn;
+      readonly message: string;
+    }
   | { readonly kind: "duplicate"; readonly value: ReservedConversationTurn };
 
 export type CancellationReservation =

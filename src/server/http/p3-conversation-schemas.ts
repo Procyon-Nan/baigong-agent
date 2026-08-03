@@ -11,9 +11,15 @@ const messageSchema = z
     (value) => Array.from(value).length <= P3_MESSAGE_MAX_CHARACTERS,
   );
 
+export const createConversationMessageSchema = z.strictObject({
+  message: messageSchema,
+  requestId: z.uuid(),
+});
+
 export const submitConversationMessageSchema = z.strictObject({
   message: messageSchema,
   requestId: z.uuid(),
+  retryOfTurnId: z.uuid().optional(),
 });
 
 export const cancelConversationTurnSchema = z.strictObject({

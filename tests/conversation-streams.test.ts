@@ -1,6 +1,7 @@
 import type { HandleMessageStreamEvent } from "eve/client";
 import { describe, expect, it, vi } from "vitest";
 import type { AuthenticatedPrincipal } from "@/src/server/auth/principal";
+import { assistantMessageBlockId } from "@/src/server/conversations/message-identifiers";
 import type { ConversationStreamRepository } from "@/src/server/conversations/repository";
 import type {
   EveGateway,
@@ -90,7 +91,16 @@ describe("secure conversation stream", () => {
       type: "assistant.delta",
       conversationId: runtime.conversationId,
       cursor: 1,
-      data: { turnId: runtime.turnId, delta: "answer", text: "answer" },
+      data: {
+        turnId: runtime.turnId,
+        blockId: assistantMessageBlockId(
+          runtime.conversationId,
+          runtime.turnId,
+          0,
+        ),
+        delta: "answer",
+        text: "answer",
+      },
     });
     expect(JSON.stringify(events)).not.toContain("internal reasoning");
     expect(JSON.stringify(events)).not.toContain("providerSecret");
@@ -223,6 +233,74 @@ describe("secure conversation stream", () => {
     );
   });
 
+  it("discards the persisted unfinished block when a turn fails", async () => {
+    const hiddenBlockId = assistantMessageBlockId(
+      runtime.conversationId,
+      runtime.turnId,
+      2,
+    );
+    const findLatestHiddenAssistantBlock = vi
+      .fn()
+      .mockResolvedValue(hiddenBlockId);
+    const repository = repositoryStub({
+      getRuntimeConversation: vi.fn().mockResolvedValue(runtime),
+      applyEvent: vi.fn().mockResolvedValue(true),
+      findProjectionTurn: vi.fn().mockResolvedValue({
+        turnId: runtime.turnId,
+        publicErrorCode: "MODEL_UNAVAILABLE",
+      }),
+      findLatestHiddenAssistantBlock,
+    });
+    const stream = await streamConversationEvents({
+      principal,
+      conversationId: runtime.conversationId,
+      after: -1,
+      reauthorize: vi.fn().mockResolvedValue(principal),
+      repository,
+      eve: eveStub({
+        streamSession: () =>
+          eventStream([
+            {
+              type: "message.appended",
+              meta: { at: "2026-07-30T08:00:01.000Z" },
+              data: {
+                turnId: "eve-turn",
+                messageDelta: "draft",
+                messageSoFar: "draft",
+                sequence: 1,
+                stepIndex: 2,
+              },
+            },
+            {
+              type: "turn.failed",
+              meta: { at: "2026-07-30T08:00:02.000Z" },
+              data: {
+                turnId: "eve-turn",
+                code: "model_error",
+                message: "unavailable",
+              },
+            },
+          ] as HandleMessageStreamEvent[]),
+      }),
+    });
+
+    expect(await readNdjson(stream)).toEqual([
+      expect.objectContaining({
+        type: "assistant.delta",
+        data: expect.objectContaining({ blockId: hiddenBlockId }),
+      }),
+      expect.objectContaining({
+        type: "turn.failed",
+        data: expect.objectContaining({ discardBlockId: hiddenBlockId }),
+      }),
+    ]);
+    expect(findLatestHiddenAssistantBlock).toHaveBeenCalledOnce();
+    expect(findLatestHiddenAssistantBlock).toHaveBeenCalledWith(
+      runtime.conversationId,
+      runtime.turnId,
+    );
+  });
+
   it("does not consume an undelivered event when authorization expires", async () => {
     const reauthorize = vi
       .fn<() => Promise<AuthenticatedPrincipal | null>>()
@@ -269,6 +347,7 @@ function repositoryStub(
 ): ConversationStreamRepository {
   return {
     applyEvent: vi.fn(),
+    findLatestHiddenAssistantBlock: vi.fn(),
     findProjectionTurn: vi.fn(),
     getRuntimeConversation: vi.fn(),
     getRuntimeConversationById: vi.fn(),

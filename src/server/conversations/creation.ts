@@ -27,10 +27,7 @@ export async function createConversation(
   const repository = dependencies.repository ?? createConversationRepository();
   const eve = dependencies.eve ?? createEveGateway();
   const encryptToken = dependencies.encryptToken ?? encryptContinuationToken;
-  const reservation = await repository.reserveCreation(
-    principal,
-    input.requestId,
-  );
+  const reservation = await repository.reserveCreation(principal, input);
   if (reservation.kind === "duplicate") {
     return {
       conversation: await repository.getOwnedConversation(
@@ -49,7 +46,10 @@ export async function createConversation(
   const identity = serviceIdentity(principal, reservation.value);
   let accepted;
   try {
-    accepted = await eve.startTurn({ identity, message: input.message });
+    accepted = await eve.startTurn({
+      identity,
+      message: reservation.message,
+    });
   } catch (error) {
     if (error instanceof EveGatewayRejectedError) {
       await repository.rejectSubmission(reservation.value);

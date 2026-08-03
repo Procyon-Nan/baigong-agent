@@ -5,17 +5,12 @@ import type { HandleMessageStreamEvent } from "eve/client";
 import { getDatabase, type Database } from "@/src/server/db/client";
 import { conversations } from "@/src/server/db/schema";
 import { conversationNotFound, conversationPersistenceFailure } from "./errors";
-import { recordConversationEventReceipt } from "./history-repository";
+import {
+  persistConversationHistoryEvent,
+  recordConversationEventReceipt,
+} from "./history-repository";
 import { applyLifecycleEvent } from "./lifecycle-repository";
-import type { ConversationTransaction } from "./repository-types";
-
-export type ConversationEventPersistenceContext = {
-  readonly transaction: ConversationTransaction;
-  readonly conversation: typeof conversations.$inferSelect;
-  readonly cursor: bigint;
-  readonly event: HandleMessageStreamEvent;
-  readonly eventAt: Date;
-};
+import type { ConversationEventPersistenceContext } from "./repository-types";
 
 export type ConversationEventPersistence = ReturnType<
   typeof createConversationEventPersistence
@@ -95,6 +90,7 @@ async function persistConversationEventChanges(
     context.event,
     context.eventAt,
   );
+  await persistConversationHistoryEvent(context);
 }
 
 function parseDurableCursor(cursor: number): bigint {

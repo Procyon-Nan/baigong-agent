@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   P3_CONVERSATION_REQUEST_MAX_BYTES,
   P3_MESSAGE_MAX_CHARACTERS,
+  createConversationMessageSchema,
   submitConversationMessageSchema,
 } from "@/src/server/http/p3-conversation-schemas";
 import { parseJsonBody } from "@/src/server/http/request";
@@ -33,6 +34,22 @@ describe("conversation request validation", () => {
         message: "hello",
         requestId,
         model: "must-not-be-accepted",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("allows retries only when continuing an existing conversation", () => {
+    const retryOfTurnId = "22222222-2222-4222-8222-222222222222";
+    const input = { message: "retry", requestId, retryOfTurnId };
+
+    expect(submitConversationMessageSchema.safeParse(input).success).toBe(true);
+    expect(createConversationMessageSchema.safeParse(input).success).toBe(
+      false,
+    );
+    expect(
+      submitConversationMessageSchema.safeParse({
+        ...input,
+        retryOfTurnId: "not-a-uuid",
       }).success,
     ).toBe(false);
   });

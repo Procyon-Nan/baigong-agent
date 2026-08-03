@@ -1,14 +1,7 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
-import {
-  and,
-  count,
-  desc,
-  eq,
-  inArray,
-  lt,
-} from "drizzle-orm";
+import { and, count, desc, eq, inArray, lt } from "drizzle-orm";
 import { writeSecurityAudit } from "@/src/server/audit/repository";
 import {
   isAdminPrincipal,
@@ -16,6 +9,7 @@ import {
 } from "@/src/server/auth/principal";
 import { getDatabase, type Database } from "@/src/server/db/client";
 import {
+  conversationMessages,
   conversationTurns,
   conversations,
   userProfiles,
@@ -31,6 +25,8 @@ import {
   userConcurrencyLimit,
 } from "./errors";
 import { createConversationEventPersistence } from "./event-persistence";
+import { userMessageBlockId } from "./message-identifiers";
+import { deriveConversationTitle } from "./message-title";
 import type { ConversationTransaction } from "./repository-types";
 import {
   MAIN_AGENT_ID,
@@ -115,7 +111,9 @@ export type ConversationQueryRepository = Pick<
 export type ConversationStreamRepository = ConversationEventRepository &
   Pick<
     ConversationRepository,
-    "findProjectionTurn" | "getRuntimeConversation"
+    | "findLatestHiddenAssistantBlock"
+    | "findProjectionTurn"
+    | "getRuntimeConversation"
   >;
 
 export function createConversationRepository(
@@ -127,14 +125,14 @@ export function createConversationRepository(
 
     reserveCreation(
       principal: AuthenticatedPrincipal,
-      requestId: string,
+      input: { readonly message: string; readonly requestId: string },
     ): Promise<TurnReservation> {
       return database.transaction(async (transaction) => {
         await lockCurrentPrincipal(transaction, principal);
         const duplicate = await findRequestTurn(
           transaction,
           principal,
-          requestId,
+          input.requestId,
         );
         if (duplicate) return { kind: "duplicate", value: duplicate };
 
@@ -145,15 +143,18 @@ export function createConversationRepository(
         );
         const conversationId = randomUUID();
         const turnId = randomUUID();
+        const inputMessageId = randomUUID();
         const now = new Date();
         await transaction.insert(conversations).values({
           id: conversationId,
           tenantId: principal.tenantId,
           ownerUserId: principal.userId,
           ownerSource: principal.source,
+          title: deriveConversationTitle(input.message),
           agentId: MAIN_AGENT_ID,
           status: "STARTING",
           activeTurnId: turnId,
+          nextMessageSequence: 1,
           createdAt: now,
           updatedAt: now,
         });
@@ -162,14 +163,29 @@ export function createConversationRepository(
           tenantId: principal.tenantId,
           conversationId,
           ownerUserId: principal.userId,
-          requestId,
+          requestId: input.requestId,
           modelConfigVersionId: model.id,
+          inputMessageId,
           status: "SUBMITTING",
+          createdAt: now,
+          updatedAt: now,
+        });
+        await transaction.insert(conversationMessages).values({
+          id: inputMessageId,
+          tenantId: principal.tenantId,
+          conversationId,
+          turnId,
+          sequence: 1,
+          role: "USER",
+          status: "COMPLETED",
+          blockId: userMessageBlockId(conversationId, turnId),
+          body: input.message,
           createdAt: now,
           updatedAt: now,
         });
         return {
           kind: "reserved",
+          message: input.message,
           value: {
             conversationId,
             turnId,
@@ -194,14 +210,18 @@ export function createConversationRepository(
     reserveContinuation(
       principal: AuthenticatedPrincipal,
       conversationId: string,
-      requestId: string,
+      input: {
+        readonly message: string;
+        readonly requestId: string;
+        readonly retryOfTurnId?: string;
+      },
     ): Promise<TurnReservation> {
       return database.transaction(async (transaction) => {
         await lockCurrentPrincipal(transaction, principal);
         const duplicate = await findRequestTurn(
           transaction,
           principal,
-          requestId,
+          input.requestId,
         );
         if (duplicate) return { kind: "duplicate", value: duplicate };
 
@@ -235,22 +255,59 @@ export function createConversationRepository(
           transaction,
           principal.tenantId,
         );
+        const retryInput = input.retryOfTurnId
+          ? await findRetryInput(
+              transaction,
+              conversationId,
+              input.retryOfTurnId,
+            )
+          : null;
+        if (input.retryOfTurnId && !retryInput) {
+          throw conversationUnavailable();
+        }
         const turnId = randomUUID();
+        const inputMessageId = retryInput?.id ?? randomUUID();
+        const message = retryInput?.body ?? input.message;
+        const nextMessageSequence = retryInput
+          ? conversation.nextMessageSequence
+          : conversation.nextMessageSequence + 1;
         const now = new Date();
         await transaction.insert(conversationTurns).values({
           id: turnId,
           tenantId: principal.tenantId,
           conversationId,
           ownerUserId: principal.userId,
-          requestId,
+          requestId: input.requestId,
           modelConfigVersionId: model.id,
+          inputMessageId,
+          retryOfTurnId: retryInput ? input.retryOfTurnId : null,
           status: "SUBMITTING",
           createdAt: now,
           updatedAt: now,
         });
+        if (!retryInput) {
+          await transaction.insert(conversationMessages).values({
+            id: inputMessageId,
+            tenantId: principal.tenantId,
+            conversationId,
+            turnId,
+            sequence: nextMessageSequence,
+            role: "USER",
+            status: "COMPLETED",
+            blockId: userMessageBlockId(conversationId, turnId),
+            body: message,
+            createdAt: now,
+            updatedAt: now,
+          });
+        }
         const [updated] = await transaction
           .update(conversations)
-          .set({ status: "RUNNING", activeTurnId: turnId, updatedAt: now })
+          .set({
+            status: "RUNNING",
+            activeTurnId: turnId,
+            nextMessageSequence,
+            updatedAt: now,
+          })
           .where(
             and(
               eq(conversations.id, conversationId),
@@ -263,6 +320,7 @@ export function createConversationRepository(
 
         return {
           kind: "reserved",
+          message,
           value: {
             conversationId,
             turnId,
@@ -621,6 +679,26 @@ export function createConversationRepository(
       return turn ?? null;
     },
 
+    async findLatestHiddenAssistantBlock(
+      conversationId: string,
+      turnId: string,
+    ): Promise<string | null> {
+      const [message] = await database
+        .select({ blockId: conversationMessages.blockId })
+        .from(conversationMessages)
+        .where(
+          and(
+            eq(conversationMessages.conversationId, conversationId),
+            eq(conversationMessages.turnId, turnId),
+            eq(conversationMessages.role, "ASSISTANT"),
+            eq(conversationMessages.status, "HIDDEN"),
+          ),
+        )
+        .orderBy(desc(conversationMessages.sequence))
+        .limit(1);
+      return message?.blockId ?? null;
+    },
+
     async listPendingConversationIds(limit: number): Promise<string[]> {
       const rows = await database
         .select({ id: conversations.id })
@@ -755,6 +833,37 @@ async function findRequestTurn(
     )
     .limit(1);
   return row ? toReserved(row.conversation, row.turn) : null;
+}
+
+async function findRetryInput(
+  transaction: ConversationTransaction,
+  conversationId: string,
+  retryOfTurnId: string,
+): Promise<{ readonly id: string; readonly body: string } | null> {
+  const [message] = await transaction
+    .select({ id: conversationMessages.id, body: conversationMessages.body })
+    .from(conversationTurns)
+    .innerJoin(
+      conversationMessages,
+      and(
+        eq(conversationMessages.id, conversationTurns.inputMessageId),
+        eq(
+          conversationMessages.conversationId,
+          conversationTurns.conversationId,
+        ),
+        eq(conversationMessages.role, "USER"),
+        eq(conversationMessages.status, "COMPLETED"),
+      ),
+    )
+    .where(
+      and(
+        eq(conversationTurns.id, retryOfTurnId),
+        eq(conversationTurns.conversationId, conversationId),
+        eq(conversationTurns.status, "FAILED"),
+      ),
+    )
+    .limit(1);
+  return message ?? null;
 }
 
 async function findOwnedConversation(

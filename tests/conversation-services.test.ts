@@ -81,6 +81,7 @@ describe("conversation creation", () => {
     const repository = repositoryStub({
       reserveCreation: vi.fn().mockResolvedValue({
         kind: "reserved",
+        message: "stored hello",
         value: reserved,
       }),
       rejectSubmission,
@@ -105,6 +106,7 @@ describe("conversation creation", () => {
     const repository = repositoryStub({
       reserveCreation: vi.fn().mockResolvedValue({
         kind: "reserved",
+        message: "stored hello",
         value: reserved,
       }),
       rejectSubmission,
@@ -129,9 +131,15 @@ describe("conversation creation", () => {
   it("monitors an accepted session when its initial token is absent", async () => {
     const recordCreationSession = vi.fn().mockResolvedValue(undefined);
     const acceptCreation = vi.fn().mockResolvedValue(undefined);
+    const startTurn = vi.fn().mockResolvedValue({
+      sessionId: "eve-session",
+      continuationToken: null,
+      events: emptyEvents(),
+    });
     const repository = repositoryStub({
       reserveCreation: vi.fn().mockResolvedValue({
         kind: "reserved",
+        message: "stored hello",
         value: reserved,
       }),
       recordCreationSession,
@@ -147,14 +155,11 @@ describe("conversation creation", () => {
       },
       {
         repository,
-        eve: eveStub({
-          startTurn: vi.fn().mockResolvedValue({
-            sessionId: "eve-session",
-            continuationToken: null,
-            events: emptyEvents(),
-          }),
-        }),
+        eve: eveStub({ startTurn }),
       },
+    );
+    expect(startTurn).toHaveBeenCalledWith(
+      expect.objectContaining({ message: "stored hello" }),
     );
     expect(recordCreationSession).toHaveBeenCalledWith(reserved, "eve-session");
     expect(acceptCreation).toHaveBeenCalledWith(reserved, {
@@ -172,6 +177,7 @@ describe("conversation creation", () => {
     const repository = repositoryStub({
       reserveCreation: vi.fn().mockResolvedValue({
         kind: "reserved",
+        message: "stored hello",
         value: reserved,
       }),
       recordCreationSession,
@@ -230,6 +236,7 @@ describe("conversation continuation", () => {
     const repository = repositoryStub({
       reserveContinuation: vi.fn().mockResolvedValue({
         kind: "reserved",
+        message: "stored next",
         value: continuation,
       }),
       acceptContinuation,
@@ -253,6 +260,7 @@ describe("conversation continuation", () => {
         sessionId: "eve-session",
         continuationToken: "plain-token",
         streamIndex: 19,
+        message: "stored next",
         identity: expect.objectContaining({
           turnId: continuation.turnId,
           modelConfigVersionId: continuation.modelConfigVersionId,
@@ -277,6 +285,7 @@ describe("conversation continuation", () => {
     const repository = repositoryStub({
       reserveContinuation: vi.fn().mockResolvedValue({
         kind: "reserved",
+        message: "stored next",
         value: continuation,
       }),
       rejectSubmission,

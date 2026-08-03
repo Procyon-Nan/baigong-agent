@@ -6,7 +6,7 @@ type TestDatabaseEnvironment = {
 };
 
 export function configureDedicatedTestDatabase(
-  phase: "P2" | "P3",
+  phase: "P2" | "P3" | "P4",
   environment: TestDatabaseEnvironment = process.env,
 ): string {
   const variableName = `${phase}_TEST_DATABASE_URL`;

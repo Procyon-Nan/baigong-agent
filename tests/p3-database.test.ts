@@ -123,11 +123,14 @@ describe("P3 database acceptance", () => {
     );
     const repository = createConversationRepository();
     const requestId = randomUUID();
-    const first = await repository.reserveCreation(owner.administrator, requestId);
+    const first = await repository.reserveCreation(owner.administrator, {
+      message: "hello",
+      requestId,
+    });
     expect(first.kind).toBe("reserved");
     const duplicate = await repository.reserveCreation(
       owner.administrator,
-      requestId,
+      { message: "hello", requestId },
     );
     expect(duplicate).toMatchObject({
       kind: "duplicate",
@@ -144,10 +147,19 @@ describe("P3 database acceptance", () => {
       ),
     ).rejects.toMatchObject({ code: "CONVERSATION_NOT_FOUND" });
 
-    await repository.reserveCreation(owner.administrator, randomUUID());
-    await repository.reserveCreation(owner.administrator, randomUUID());
+    await repository.reserveCreation(owner.administrator, {
+      message: "second",
+      requestId: randomUUID(),
+    });
+    await repository.reserveCreation(owner.administrator, {
+      message: "third",
+      requestId: randomUUID(),
+    });
     await expect(
-      repository.reserveCreation(owner.administrator, randomUUID()),
+      repository.reserveCreation(owner.administrator, {
+        message: "fourth",
+        requestId: randomUUID(),
+      }),
     ).rejects.toMatchObject({ code: "USER_CONCURRENCY_LIMIT" });
   }, 30_000);
 
@@ -160,7 +172,7 @@ describe("P3 database acceptance", () => {
     const repository = createConversationRepository();
     const submission = await repository.reserveCreation(
       context.administrator,
-      randomUUID(),
+      { message: "hello", requestId: randomUUID() },
     );
     expect(submission.kind).toBe("reserved");
     if (submission.kind !== "reserved") throw new Error("Expected a reservation.");
@@ -202,7 +214,7 @@ describe("P3 database acceptance", () => {
 
     const hookFirstReservation = await repository.reserveCreation(
       hookFirst.administrator,
-      randomUUID(),
+      { message: "hello", requestId: randomUUID() },
     );
     expect(hookFirstReservation.kind).toBe("reserved");
     if (hookFirstReservation.kind !== "reserved") {
@@ -227,7 +239,7 @@ describe("P3 database acceptance", () => {
 
     const bffFirstReservation = await repository.reserveCreation(
       bffFirst.administrator,
-      randomUUID(),
+      { message: "hello", requestId: randomUUID() },
     );
     expect(bffFirstReservation.kind).toBe("reserved");
     if (bffFirstReservation.kind !== "reserved") {
@@ -279,7 +291,7 @@ describe("P3 database acceptance", () => {
     const repository = createConversationRepository();
     const submission = await repository.reserveCreation(
       context.administrator,
-      randomUUID(),
+      { message: "hello", requestId: randomUUID() },
     );
     expect(submission.kind).toBe("reserved");
     if (submission.kind !== "reserved") throw new Error("Expected a reservation.");
@@ -326,7 +338,7 @@ describe("P3 database acceptance", () => {
     const repository = createConversationRepository();
     const first = await repository.reserveCreation(
       context.administrator,
-      randomUUID(),
+      { message: "hello", requestId: randomUUID() },
     );
     expect(first.kind).toBe("reserved");
     expect(first.value.modelConfigVersionId).toBe(firstModel.id);
@@ -388,7 +400,7 @@ describe("P3 database acceptance", () => {
     const second = await repository.reserveContinuation(
       context.administrator,
       first.value.conversationId,
-      randomUUID(),
+      { message: "next", requestId: randomUUID() },
     );
     expect(second.kind).toBe("reserved");
     expect(second.value.modelConfigVersionId).toBe(secondModel.id);
@@ -415,7 +427,7 @@ describe("P3 database acceptance", () => {
     const repository = createConversationRepository();
     const first = await repository.reserveCreation(
       context.administrator,
-      randomUUID(),
+      { message: "hello", requestId: randomUUID() },
     );
     expect(first.kind).toBe("reserved");
     const sessionId = `eve-${randomUUID()}`;
@@ -458,12 +470,12 @@ describe("P3 database acceptance", () => {
       repository.reserveContinuation(
         context.administrator,
         first.value.conversationId,
-        randomUUID(),
+        { message: "next one", requestId: randomUUID() },
       ),
       repository.reserveContinuation(
         context.administrator,
         first.value.conversationId,
-        randomUUID(),
+        { message: "next two", requestId: randomUUID() },
       ),
     ]);
     expect(attempts.filter(({ status }) => status === "fulfilled")).toHaveLength(1);

@@ -144,6 +144,9 @@ export function useChatConversation(options: {
           body: {
             message: trimmed,
             requestId,
+            ...(submission.retryOfTurnId
+              ? { retryOfTurnId: submission.retryOfTurnId }
+              : {}),
           },
         },
       );
@@ -257,7 +260,8 @@ export function useChatConversation(options: {
         failedSubmission.current = {
           text: lastSubmittedMessage.current,
           requestId: crypto.randomUUID(),
-          appendUserMessage: true,
+          appendUserMessage: false,
+          retryOfTurnId: event.data.turnId,
         };
         setFailedMessage(lastSubmittedMessage.current);
         setError(event.data.error.message);
@@ -311,6 +315,7 @@ type FailedSubmission = {
   readonly text: string;
   readonly requestId: string;
   readonly appendUserMessage: boolean;
+  readonly retryOfTurnId?: string;
 };
 
 function isTerminal(status: ConversationStatus | null): boolean {

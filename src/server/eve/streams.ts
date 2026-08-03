@@ -1,6 +1,5 @@
 import "server-only";
 
-import { createHash } from "node:crypto";
 import type { HandleMessageStreamEvent } from "eve/client";
 import type { AuthenticatedPrincipal } from "@/src/server/auth/principal";
 import {
@@ -12,6 +11,7 @@ import {
 } from "./projection";
 import { createEveGateway } from "./client";
 import { applyConversationEvent } from "@/src/server/conversations/lifecycle";
+import { assistantMessageBlockId } from "@/src/server/conversations/message-identifiers";
 import {
   createConversationRepository,
   type ConversationStreamRepository,
@@ -211,12 +211,20 @@ async function projectEvent(
   const turn = eveTurnId
     ? await repository.findProjectionTurn(conversationId, eveTurnId)
     : null;
+  const assistantBlockId = turn
+    ? await projectionAssistantBlockId(
+        repository,
+        conversationId,
+        turn.turnId,
+        event,
+      )
+    : undefined;
   return projectEveEvent(event, {
     conversationId,
     cursor,
     turnId: turn?.turnId,
     eveTurnId: eveTurnId ?? undefined,
-    assistantBlockId: turn ? assistantBlockId(conversationId, turn.turnId) : undefined,
+    assistantBlockId,
     failureCode: publicFailureCode(turn?.publicErrorCode),
   });
 }
@@ -230,11 +238,31 @@ function eventTurnId(event: HandleMessageStreamEvent): string | null {
     : null;
 }
 
-function assistantBlockId(conversationId: string, turnId: string): string {
-  return `blk_${createHash("sha256")
-    .update(`${conversationId}:${turnId}`)
-    .digest("base64url")
-    .slice(0, 22)}`;
+async function projectionAssistantBlockId(
+  repository: ConversationStreamRepository,
+  conversationId: string,
+  turnId: string,
+  event: HandleMessageStreamEvent,
+): Promise<string | undefined> {
+  if (
+    event.type === "message.appended" ||
+    event.type === "message.completed"
+  ) {
+    return assistantMessageBlockId(
+      conversationId,
+      turnId,
+      event.data.stepIndex,
+    );
+  }
+  if (event.type === "turn.failed") {
+    return (
+      (await repository.findLatestHiddenAssistantBlock(
+        conversationId,
+        turnId,
+      )) ?? undefined
+    );
+  }
+  return undefined;
 }
 
 function publicFailureCode(
@@ -272,7 +300,10 @@ async function nextOrHeartbeat<T>(
     return await Promise.race([
       pending.then((value) => ({ kind: "event" as const, value })),
       new Promise<{ readonly kind: "heartbeat" }>((resolve) => {
-        timer = setTimeout(() => resolve({ kind: "heartbeat" }), heartbeatIntervalMs);
+        timer = setTimeout(
+          () => resolve({ kind: "heartbeat" }),
+          heartbeatIntervalMs,
+        );
       }),
     ]);
   } finally {
