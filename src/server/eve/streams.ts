@@ -81,8 +81,12 @@ export async function streamConversationEvents(input: {
           return;
         }
         controller.enqueue(encoder.encode(`${JSON.stringify(next.value)}\n`));
-      } catch {
-        controller.close();
+      } catch (error) {
+        if (signal.aborted) {
+          controller.close();
+          return;
+        }
+        controller.error(error);
       }
     },
     async cancel() {
@@ -192,6 +196,7 @@ async function* publicEventIterator(input: {
         input.conversationId,
         cursor,
         event,
+        runtime,
       );
       cursor += 1;
       if (projected) yield projected;
@@ -206,43 +211,89 @@ async function projectEvent(
   conversationId: string,
   cursor: number,
   event: HandleMessageStreamEvent,
+  runtime: RuntimeConversation,
 ): Promise<PublicConversationEvent | null> {
-  const eveTurnId = eventTurnId(event);
-  const turn = eveTurnId
-    ? await repository.findProjectionTurn(conversationId, eveTurnId)
-    : null;
-  const assistantBlockId = turn
-    ? await projectionAssistantBlockId(
-        repository,
+  const context = { conversationId, cursor };
+  switch (event.type) {
+    case "session.started":
+    case "session.waiting":
+    case "session.failed":
+    case "session.completed":
+      return projectEveEvent(event, context);
+    case "turn.started":
+    case "message.appended":
+    case "message.completed":
+    case "turn.completed":
+    case "turn.cancelled":
+    case "turn.failed":
+      return projectTurnEvent(repository, event, context);
+    case "subagent.called": {
+      const subagent = await repository.findSubagentProjection(
         conversationId,
-        turn.turnId,
-        event,
-      )
-    : undefined;
-  return projectEveEvent(event, {
-    conversationId,
-    cursor,
-    turnId: turn?.turnId,
-    eveTurnId: eveTurnId ?? undefined,
-    assistantBlockId,
-    failureCode: publicFailureCode(turn?.publicErrorCode),
-  });
+        event.data.callId,
+      );
+      return projectEveEvent(event, {
+        ...context,
+        subagent: subagent ?? undefined,
+      });
+    }
+    case "input.requested":
+    case "authorization.required": {
+      if (runtime.kind !== "MAIN") return null;
+      const interactionOrigin = await repository.resolveInteractionOrigin(
+        conversationId,
+        event.data.turnId,
+      );
+      if (!interactionOrigin) return null;
+      return projectEveEvent(event, { ...context, interactionOrigin });
+    }
+    default:
+      return null;
+  }
 }
 
-function eventTurnId(event: HandleMessageStreamEvent): string | null {
-  if (!("data" in event) || !event.data || typeof event.data !== "object") {
-    return null;
+type TurnProjectionEvent = Extract<
+  HandleMessageStreamEvent,
+  {
+    type:
+      | "turn.started"
+      | "message.appended"
+      | "message.completed"
+      | "turn.completed"
+      | "turn.cancelled"
+      | "turn.failed";
   }
-  return "turnId" in event.data && typeof event.data.turnId === "string"
-    ? event.data.turnId
-    : null;
+>;
+
+async function projectTurnEvent(
+  repository: ConversationStreamRepository,
+  event: TurnProjectionEvent,
+  context: { readonly conversationId: string; readonly cursor: number },
+): Promise<PublicConversationEvent | null> {
+  const turn = await repository.findProjectionTurn(
+    context.conversationId,
+    event.data.turnId,
+  );
+  if (!turn) return null;
+  const assistantBlockId = await projectionAssistantBlockId(
+    repository,
+    context.conversationId,
+    turn.turnId,
+    event,
+  );
+  return projectEveEvent(event, {
+    ...context,
+    turnId: turn.turnId,
+    assistantBlockId,
+    failureCode: publicFailureCode(turn.publicErrorCode),
+  });
 }
 
 async function projectionAssistantBlockId(
   repository: ConversationStreamRepository,
   conversationId: string,
   turnId: string,
-  event: HandleMessageStreamEvent,
+  event: TurnProjectionEvent,
 ): Promise<string | undefined> {
   if (
     event.type === "message.appended" ||

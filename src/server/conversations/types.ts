@@ -1,6 +1,8 @@
 import type { HandleMessageStreamEvent } from "eve/client";
 import type { AuthenticatedPrincipal } from "@/src/server/auth/principal";
 import type {
+  ConversationKind,
+  ConversationLinkStatus,
   ConversationStatus,
   ConversationTurnStatus,
 } from "@/src/server/db/schema";
@@ -110,4 +112,7 @@ export type CancellationReservation =
 
 export type RuntimeConversation = ReservedConversationTurn & {
   readonly role: AuthenticatedPrincipal["role"];
+  readonly kind: ConversationKind;
+  readonly linkStatus: ConversationLinkStatus;
+  readonly parentConversationId: string | null;
 };

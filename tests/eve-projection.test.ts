@@ -11,7 +11,6 @@ const context: EveEventProjectionContext = {
   conversationId: "conversation-public",
   cursor: 8,
   turnId: "turn-public",
-  eveTurnId: "turn-eve-internal",
   assistantBlockId: "block-public",
 };
 const meta = { at: "2026-07-30T08:00:00.000Z" };
@@ -51,13 +50,12 @@ describe("eve public event projection", () => {
     expect(JSON.stringify(projected)).not.toContain("stepIndex");
   });
 
-  it("drops reasoning, tool, subagent, malformed, mismatched, and future events", () => {
+  it("drops reasoning, tool, malformed, and future events", () => {
     const disallowed = [
       "reasoning.appended",
       "actions.requested",
       "action.result",
-      "input.requested",
-      "subagent.called",
+      "authorization.completed",
       "future.event",
     ];
 
@@ -68,13 +66,156 @@ describe("eve public event projection", () => {
     expect(
       projectEveEvent(
         {
-          type: "turn.completed",
+          type: "message.appended",
           meta,
-          data: { turnId: "another-eve-turn" },
+          data: { messageDelta: 1, messageSoFar: "invalid" },
         },
         context,
       ),
     ).toBeNull();
+  });
+
+  it("projects a subagent entry without exposing eve or delegation identifiers", () => {
+    const projected = projectEveEvent(
+      {
+        type: "subagent.called",
+        meta,
+        data: {
+          callId: "secret-call-id",
+          childSessionId: "secret-child-session",
+          sessionId: "secret-parent-session",
+          workflowId: "secret-workflow",
+        },
+      },
+      {
+        ...context,
+        subagent: {
+          conversationId: "55555555-5555-4555-8555-555555555555",
+          name: "researcher",
+          linkStatus: "PENDING",
+          status: "STARTING",
+        },
+      },
+    );
+
+    expect(projected).toEqual({
+      type: "subagent.created",
+      conversationId: context.conversationId,
+      cursor: context.cursor,
+      at: meta.at,
+      data: {
+        childConversationId: "55555555-5555-4555-8555-555555555555",
+        name: "researcher",
+        linkStatus: "PENDING",
+        status: "STARTING",
+      },
+    });
+    expect(JSON.stringify(projected)).not.toContain("secret-");
+  });
+
+  it("projects only user-facing input request fields from a subagent", () => {
+    const projected = projectEveEvent(
+      {
+        type: "input.requested",
+        meta,
+        data: {
+          turnId: "child-eve-turn",
+          stepIndex: 4,
+          requests: [
+            {
+              requestId: "request-public-handle",
+              prompt: "请选择处理方式",
+              display: "select",
+              allowFreeform: false,
+              options: [
+                {
+                  id: "retry",
+                  label: "重试",
+                  description: "使用当前配置重试",
+                  style: "primary",
+                },
+              ],
+              action: {
+                kind: "tool-call",
+                callId: "secret-tool-call",
+                toolName: "secret-tool",
+                input: { apiKey: "secret-key" },
+              },
+            },
+          ],
+        },
+      },
+      { ...context, interactionOrigin: "SUBAGENT" },
+    );
+
+    expect(projected).toEqual({
+      type: "input.requested",
+      conversationId: context.conversationId,
+      cursor: context.cursor,
+      at: meta.at,
+      data: {
+        origin: "SUBAGENT",
+        requests: [
+          {
+            requestId: "request-public-handle",
+            prompt: "请选择处理方式",
+            display: "select",
+            allowFreeform: false,
+            options: [
+              {
+                id: "retry",
+                label: "重试",
+                description: "使用当前配置重试",
+                style: "primary",
+              },
+            ],
+          },
+        ],
+      },
+    });
+    expect(JSON.stringify(projected)).not.toContain("secret-");
+  });
+
+  it("projects a safe authorization challenge and drops callback internals", () => {
+    const projected = projectEveEvent(
+      {
+        type: "authorization.required",
+        meta,
+        data: {
+          turnId: "child-eve-turn",
+          name: "internal-connection-name",
+          description: "需要连接知识库",
+          webhookUrl: "https://internal.example/callback/secret-token",
+          authorization: {
+            displayName: "Knowledge Base",
+            url: "https://auth.example/activate",
+            userCode: "ABCD-1234",
+            expiresAt: "2026-07-30T08:10:00.000Z",
+            instructions: "完成授权后返回对话。",
+            internalToken: "secret-token",
+          },
+        },
+      },
+      { ...context, interactionOrigin: "SUBAGENT" },
+    );
+
+    expect(projected).toMatchObject({
+      type: "authorization.required",
+      data: {
+        origin: "SUBAGENT",
+        description: "需要连接知识库",
+        authorization: {
+          displayName: "Knowledge Base",
+          url: "https://auth.example/activate",
+          userCode: "ABCD-1234",
+          expiresAt: "2026-07-30T08:10:00.000Z",
+          instructions: "完成授权后返回对话。",
+        },
+      },
+    });
+    expect(JSON.stringify(projected)).not.toContain("internal-connection");
+    expect(JSON.stringify(projected)).not.toContain("webhook");
+    expect(JSON.stringify(projected)).not.toContain("secret-token");
   });
 
   it("redacts raw eve failures and identifies the incomplete draft", () => {

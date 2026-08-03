@@ -20,6 +20,9 @@ const runtime: RuntimeConversation = {
   nextStreamIndex: 0,
   createdAt: new Date("2026-07-30T08:00:00.000Z"),
   updatedAt: new Date("2026-07-30T08:00:00.000Z"),
+  kind: "MAIN",
+  linkStatus: "NOT_APPLICABLE",
+  parentConversationId: null,
 };
 
 describe("conversation startup reconciliation", () => {

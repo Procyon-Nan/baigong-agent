@@ -1,7 +1,7 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
-import { and, count, desc, eq, inArray, lt } from "drizzle-orm";
+import { and, count, desc, eq, inArray, lt, or } from "drizzle-orm";
 import { writeSecurityAudit } from "@/src/server/audit/repository";
 import {
   isAdminPrincipal,
@@ -29,6 +29,12 @@ import { userMessageBlockId } from "./message-identifiers";
 import { deriveConversationTitle } from "./message-title";
 import type { ConversationTransaction } from "./repository-types";
 import {
+  findInteractionProjectionOrigin,
+  findSubagentPublicProjection,
+  type InteractionProjectionOrigin,
+  type SubagentPublicProjection,
+} from "./subagent-linking";
+import {
   MAIN_AGENT_ID,
   MAX_ACTIVE_TURNS_PER_USER,
   type CancellationReservation,
@@ -54,6 +60,8 @@ export type ProjectionTurn = {
   readonly turnId: string;
   readonly publicErrorCode: string | null;
 };
+
+export type { InteractionProjectionOrigin, SubagentPublicProjection };
 
 export type ConversationRepository = ReturnType<
   typeof createConversationRepository
@@ -113,7 +121,9 @@ export type ConversationStreamRepository = ConversationEventRepository &
     ConversationRepository,
     | "findLatestHiddenAssistantBlock"
     | "findProjectionTurn"
+    | "findSubagentProjection"
     | "getRuntimeConversation"
+    | "resolveInteractionOrigin"
   >;
 
 export function createConversationRepository(
@@ -218,13 +228,6 @@ export function createConversationRepository(
     ): Promise<TurnReservation> {
       return database.transaction(async (transaction) => {
         await lockCurrentPrincipal(transaction, principal);
-        const duplicate = await findRequestTurn(
-          transaction,
-          principal,
-          input.requestId,
-        );
-        if (duplicate) return { kind: "duplicate", value: duplicate };
-
         const conversation = await findOwnedConversation(
           transaction,
           principal,
@@ -232,6 +235,18 @@ export function createConversationRepository(
           true,
         );
         if (!conversation) throw conversationNotFound();
+        if (conversation.kind !== "MAIN") throw conversationUnavailable();
+        const duplicate = await findRequestTurn(
+          transaction,
+          principal,
+          input.requestId,
+        );
+        if (duplicate) {
+          if (duplicate.conversationId !== conversationId) {
+            throw conversationUnavailable();
+          }
+          return { kind: "duplicate", value: duplicate };
+        }
         if (
           BUSY_CONVERSATION_STATUSES.some(
             (status) => status === conversation.status,
@@ -483,6 +498,13 @@ export function createConversationRepository(
         ) {
           throw conversationNotFound();
         }
+        if (
+          !isAdminPrincipal(principal) &&
+          conversation.kind === "SUBAGENT" &&
+          conversation.linkStatus !== "VERIFIED"
+        ) {
+          throw conversationNotFound();
+        }
         if (!conversation.activeTurnId) return { kind: "no_active_turn" };
         if (conversation.activeTurnId !== observedTurnId) throw turnChanged();
         if (!conversation.eveSessionId) throw conversationUnavailable();
@@ -631,7 +653,13 @@ export function createConversationRepository(
       if (!conversation) throw conversationNotFound();
       const turn = await findRuntimeTurn(database, conversation);
       if (!turn) throw conversationUnavailable();
-      return { ...toReserved(conversation, turn), role: principal.role };
+      return {
+        ...toReserved(conversation, turn),
+        role: principal.role,
+        kind: conversation.kind,
+        linkStatus: conversation.linkStatus,
+        parentConversationId: conversation.parentConversationId,
+      };
     },
 
     async getRuntimeConversationById(
@@ -656,7 +684,13 @@ export function createConversationRepository(
         .limit(1);
       const turn = await findRuntimeTurn(database, conversation);
       if (!profile || !turn) return null;
-      return { ...toReserved(conversation, turn), role: profile.role };
+      return {
+        ...toReserved(conversation, turn),
+        role: profile.role,
+        kind: conversation.kind,
+        linkStatus: conversation.linkStatus,
+        parentConversationId: conversation.parentConversationId,
+      };
     },
 
     async findProjectionTurn(
@@ -677,6 +711,28 @@ export function createConversationRepository(
         )
         .limit(1);
       return turn ?? null;
+    },
+
+    async resolveInteractionOrigin(
+      conversationId: string,
+      eveTurnId: string,
+    ): Promise<InteractionProjectionOrigin | null> {
+      return findInteractionProjectionOrigin(
+        database,
+        conversationId,
+        eveTurnId,
+      );
+    },
+
+    findSubagentProjection(
+      parentConversationId: string,
+      delegationCallId: string,
+    ): Promise<SubagentPublicProjection | null> {
+      return findSubagentPublicProjection(
+        database,
+        parentConversationId,
+        delegationCallId,
+      );
     },
 
     async findLatestHiddenAssistantBlock(
@@ -881,6 +937,13 @@ async function findOwnedConversation(
         eq(conversations.tenantId, principal.tenantId),
         eq(conversations.ownerUserId, principal.userId),
         eq(conversations.ownerSource, principal.source),
+        or(
+          eq(conversations.kind, "MAIN"),
+          and(
+            eq(conversations.kind, "SUBAGENT"),
+            eq(conversations.linkStatus, "VERIFIED"),
+          ),
+        ),
       ),
     )
     .limit(1);

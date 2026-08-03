@@ -14,6 +14,7 @@ import {
 import { conversationPersistenceFailure } from "./errors";
 import {
   assistantMessageBlockId,
+  delegationMessageBlockId,
   userMessageBlockId,
 } from "./message-identifiers";
 import type {
@@ -21,6 +22,7 @@ import type {
   ConversationTransaction,
 } from "./repository-types";
 import { findConversationTurnByEveId } from "./turn-repository";
+import { extractSubagentDelegationMessage } from "./subagent-linking";
 
 export async function recordConversationEventReceipt(
   transaction: ConversationTransaction,
@@ -142,16 +144,21 @@ async function persistReceivedMessage(
     context.transaction,
     context.conversation.id,
   );
+  const delegation = context.conversation.kind === "SUBAGENT";
   await context.transaction.insert(conversationMessages).values({
     id: messageId,
     tenantId: context.conversation.tenantId,
     conversationId: context.conversation.id,
     turnId: turn.id,
     sequence,
-    role: "USER",
+    role: delegation ? "DELEGATION" : "USER",
     status: "COMPLETED",
-    blockId: userMessageBlockId(context.conversation.id, turn.id),
-    body: event.data.message,
+    blockId: delegation
+      ? delegationMessageBlockId(context.conversation.id, turn.id)
+      : userMessageBlockId(context.conversation.id, turn.id),
+    body: delegation
+      ? extractSubagentDelegationMessage(event.data.message)
+      : event.data.message,
     firstEveCursor: context.cursor,
     lastEveCursor: context.cursor,
     createdAt: context.eventAt,

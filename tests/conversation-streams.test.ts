@@ -37,6 +37,9 @@ const runtime: RuntimeConversation = {
   createdAt: new Date("2026-07-30T08:00:00.000Z"),
   updatedAt: new Date("2026-07-30T08:00:00.000Z"),
   role: "USER",
+  kind: "MAIN",
+  linkStatus: "NOT_APPLICABLE",
+  parentConversationId: null,
 };
 
 describe("secure conversation stream", () => {
@@ -123,6 +126,7 @@ describe("secure conversation stream", () => {
         startIndex: 0,
       }),
     );
+    expect(repository.findProjectionTurn).toHaveBeenCalledOnce();
   });
 
   it("emits authentication expiry and closes when authority is revoked", async () => {
@@ -301,6 +305,214 @@ describe("secure conversation stream", () => {
     );
   });
 
+  it("projects subagent entries and proxied interaction requests without raw identifiers", async () => {
+    const childConversationId = "55555555-5555-4555-8555-555555555555";
+    const repository = repositoryStub({
+      getRuntimeConversation: vi.fn().mockResolvedValue(runtime),
+      applyEvent: vi.fn().mockResolvedValue(true),
+      findSubagentProjection: vi.fn().mockResolvedValue({
+        conversationId: childConversationId,
+        name: "researcher",
+        linkStatus: "PENDING",
+        status: "STARTING",
+      }),
+      resolveInteractionOrigin: vi.fn().mockResolvedValue("SUBAGENT"),
+    });
+    const stream = await streamConversationEvents({
+      principal,
+      conversationId: runtime.conversationId,
+      after: -1,
+      reauthorize: vi.fn().mockResolvedValue(principal),
+      repository,
+      eve: eveStub({
+        streamSession: () =>
+          eventStream([
+            {
+              type: "subagent.called",
+              meta: { at: "2026-07-30T08:00:01.000Z" },
+              data: {
+                turnId: "eve-turn",
+                callId: "secret-delegation-call",
+                childSessionId: "secret-child-session",
+                sessionId: "eve-session",
+                sequence: 1,
+                name: "researcher",
+                toolName: "researcher",
+                workflowId: "secret-workflow",
+              },
+            },
+            {
+              type: "input.requested",
+              meta: { at: "2026-07-30T08:00:02.000Z" },
+              data: {
+                turnId: "child-eve-turn",
+                sequence: 1,
+                stepIndex: 0,
+                requests: [
+                  {
+                    requestId: "request-1",
+                    prompt: "是否继续？",
+                    display: "confirmation",
+                    options: [
+                      { id: "approve", label: "继续", style: "primary" },
+                      { id: "deny", label: "停止", style: "danger" },
+                    ],
+                    action: {
+                      kind: "tool-call",
+                      callId: "secret-tool-call",
+                      toolName: "terminal",
+                      input: { command: "secret command" },
+                    },
+                  },
+                ],
+              },
+            },
+          ] as HandleMessageStreamEvent[]),
+      }),
+    });
+
+    const events = await readNdjson(stream);
+    expect(events).toMatchObject([
+      {
+        type: "subagent.created",
+        data: {
+          childConversationId,
+          name: "researcher",
+          linkStatus: "PENDING",
+        },
+      },
+      {
+        type: "input.requested",
+        data: {
+          origin: "SUBAGENT",
+          requests: [{ requestId: "request-1", prompt: "是否继续？" }],
+        },
+      },
+    ]);
+    expect(JSON.stringify(events)).not.toContain("secret-");
+    expect(JSON.stringify(events)).not.toContain("command");
+    expect(repository.findProjectionTurn).not.toHaveBeenCalled();
+    expect(repository.resolveInteractionOrigin).toHaveBeenCalledWith(
+      runtime.conversationId,
+      "child-eve-turn",
+    );
+  });
+
+  it("drops interaction requests that do not belong to a known turn", async () => {
+    const repository = repositoryStub({
+      getRuntimeConversation: vi.fn().mockResolvedValue(runtime),
+      applyEvent: vi.fn().mockResolvedValue(true),
+      resolveInteractionOrigin: vi.fn().mockResolvedValue(null),
+    });
+    const stream = await streamConversationEvents({
+      principal,
+      conversationId: runtime.conversationId,
+      after: -1,
+      reauthorize: vi.fn().mockResolvedValue(principal),
+      repository,
+      eve: eveStub({
+        streamSession: () =>
+          eventStream([
+            {
+              type: "input.requested",
+              meta: { at: "2026-07-30T08:00:02.000Z" },
+              data: {
+                turnId: "unknown-turn",
+                sequence: 1,
+                stepIndex: 0,
+                requests: [],
+              },
+            },
+          ]),
+      }),
+    });
+
+    expect(await readNdjson(stream)).toEqual([]);
+  });
+
+  it("does not surface interaction controls inside a child conversation", async () => {
+    const childRuntime: RuntimeConversation = {
+      ...runtime,
+      kind: "SUBAGENT",
+      linkStatus: "VERIFIED",
+      parentConversationId: "66666666-6666-4666-8666-666666666666",
+    };
+    const repository = repositoryStub({
+      getRuntimeConversation: vi.fn().mockResolvedValue(childRuntime),
+      applyEvent: vi.fn().mockResolvedValue(true),
+      findProjectionTurn: vi.fn().mockResolvedValue({
+        turnId: childRuntime.turnId,
+        publicErrorCode: null,
+      }),
+    });
+    const stream = await streamConversationEvents({
+      principal,
+      conversationId: childRuntime.conversationId,
+      after: -1,
+      reauthorize: vi.fn().mockResolvedValue(principal),
+      repository,
+      eve: eveStub({
+        streamSession: () =>
+          eventStream([
+            {
+              type: "input.requested",
+              meta: { at: "2026-07-30T08:00:02.000Z" },
+              data: {
+                turnId: "eve-turn",
+                sequence: 1,
+                stepIndex: 0,
+                requests: [
+                  {
+                    requestId: "request-child",
+                    prompt: "internal child prompt",
+                    action: {
+                      kind: "tool-call",
+                      callId: "call-child",
+                      toolName: "tool",
+                      input: {},
+                    },
+                  },
+                ],
+              },
+            },
+          ] as HandleMessageStreamEvent[]),
+      }),
+    });
+
+    expect(await readNdjson(stream)).toEqual([]);
+    expect(repository.resolveInteractionOrigin).not.toHaveBeenCalled();
+  });
+
+  it("surfaces server-side stream failures to the response reader", async () => {
+    const failure = new Error("persistence failed");
+    const repository = repositoryStub({
+      getRuntimeConversation: vi.fn().mockResolvedValue(runtime),
+      applyEvent: vi.fn().mockRejectedValue(failure),
+    });
+    const stream = await streamConversationEvents({
+      principal,
+      conversationId: runtime.conversationId,
+      after: -1,
+      reauthorize: vi.fn().mockResolvedValue(principal),
+      repository,
+      eve: eveStub({
+        streamSession: () =>
+          eventStream([
+            {
+              type: "session.waiting",
+              meta: { at: "2026-07-30T08:00:02.000Z" },
+              data: {
+                continuationToken: "continuation",
+                wait: "next-user-message",
+              },
+            },
+          ]),
+      }),
+    });
+
+    await expect(new Response(stream).text()).rejects.toBe(failure);
+  });
+
   it("does not consume an undelivered event when authorization expires", async () => {
     const reauthorize = vi
       .fn<() => Promise<AuthenticatedPrincipal | null>>()
@@ -349,8 +561,10 @@ function repositoryStub(
     applyEvent: vi.fn(),
     findLatestHiddenAssistantBlock: vi.fn(),
     findProjectionTurn: vi.fn(),
+    findSubagentProjection: vi.fn(),
     getRuntimeConversation: vi.fn(),
     getRuntimeConversationById: vi.fn(),
+    resolveInteractionOrigin: vi.fn(),
     ...overrides,
   };
 }

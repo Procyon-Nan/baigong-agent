@@ -12,6 +12,7 @@ import {
 } from "./history-repository";
 import { applyLifecycleEvent } from "./lifecycle-repository";
 import type { ConversationEventPersistenceContext } from "./repository-types";
+import { persistSubagentLinking } from "./subagent-linking";
 import { persistConversationStepUsage } from "./usage-repository";
 
 export type ConversationEventPersistence = ReturnType<
@@ -95,6 +96,7 @@ async function persistConversationEventChanges(
   await persistConversationHistoryEvent(context);
   await persistConversationStepUsage(context);
   await persistConversationActionAudit(context);
+  await persistSubagentLinking(context);
 }
 
 function parseDurableCursor(cursor: number): bigint {

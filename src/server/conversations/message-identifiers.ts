@@ -7,6 +7,13 @@ export function userMessageBlockId(
   return hashedBlockId("usr", conversationId, turnId);
 }
 
+export function delegationMessageBlockId(
+  conversationId: string,
+  turnId: string,
+): string {
+  return hashedBlockId("dlg", conversationId, turnId);
+}
+
 export function assistantMessageBlockId(
   conversationId: string,
   turnId: string,
