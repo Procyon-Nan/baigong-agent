@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import type { HandleMessageStreamEvent } from "eve/client";
 import { getDatabase, type Database } from "@/src/server/db/client";
 import { conversations } from "@/src/server/db/schema";
+import { persistConversationActionAudit } from "./action-audit-repository";
 import { conversationNotFound, conversationPersistenceFailure } from "./errors";
 import {
   persistConversationHistoryEvent,
@@ -93,6 +94,7 @@ async function persistConversationEventChanges(
   );
   await persistConversationHistoryEvent(context);
   await persistConversationStepUsage(context);
+  await persistConversationActionAudit(context);
 }
 
 function parseDurableCursor(cursor: number): bigint {
