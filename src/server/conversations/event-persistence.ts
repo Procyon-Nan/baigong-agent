@@ -11,6 +11,7 @@ import {
 } from "./history-repository";
 import { applyLifecycleEvent } from "./lifecycle-repository";
 import type { ConversationEventPersistenceContext } from "./repository-types";
+import { persistConversationStepUsage } from "./usage-repository";
 
 export type ConversationEventPersistence = ReturnType<
   typeof createConversationEventPersistence
@@ -91,6 +92,7 @@ async function persistConversationEventChanges(
     context.eventAt,
   );
   await persistConversationHistoryEvent(context);
+  await persistConversationStepUsage(context);
 }
 
 function parseDurableCursor(cursor: number): bigint {

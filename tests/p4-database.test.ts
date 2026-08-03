@@ -15,7 +15,7 @@ import {
 } from "@/src/server/db/schema";
 import type { ConversationRepository } from "@/src/server/conversations/repository";
 import type { ReservedConversationTurn } from "@/src/server/conversations/types";
-import { encryptContinuationToken } from "@/src/server/models/credentials";
+import { prepareP4Conversation } from "./support/p4-conversation-fixtures";
 import {
   cleanupP4TestContext,
   cleanupP4TestDataDirectories,
@@ -255,45 +255,8 @@ async function readyConversation(
 }> {
   const context = await createP4TestContext(label);
   contexts.push(context);
-  await configureModel(context);
-  const { createConversationRepository } = await import(
-    "@/src/server/conversations/repository"
-  );
-  const repository = createConversationRepository();
-  const reserved = await repository.reserveCreation(context.administrator, {
-    message,
-    requestId: randomUUID(),
-  });
-  if (reserved.kind !== "reserved") throw new Error("Expected a reservation.");
-  const eveSessionId = `session-${randomUUID()}`;
-  const encryptedContinuationToken = await encryptContinuationToken(
-    `token-${randomUUID()}`,
-    {
-      tenantId: context.tenantId,
-      conversationId: reserved.value.conversationId,
-      revision: 1,
-    },
-  );
-  await repository.recordCreationSession(reserved.value, eveSessionId);
-  await repository.acceptCreation(reserved.value, {
-    eveSessionId,
-    encryptedContinuationToken,
-    continuationTokenRevision: 1,
-  });
-  return { context, repository, reservation: reserved.value };
-}
-
-async function configureModel(context: P4TestContext): Promise<void> {
-  const { saveModelConfiguration } = await import(
-    "@/src/server/models/configuration"
-  );
-  await saveModelConfiguration(context.administrator, {
-    providerDisplayName: "P4 Fake Provider",
-    baseUrl: "http://127.0.0.1:41999/v1",
-    modelName: `fake-${randomUUID()}`,
-    contextWindowTokens: 8_192,
-    apiKey: `fake-${randomUUID()}`,
-  });
+  const prepared = await prepareP4Conversation(context, message);
+  return { context, ...prepared };
 }
 
 async function applyEvents(

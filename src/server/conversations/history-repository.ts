@@ -20,6 +20,7 @@ import type {
   ConversationEventPersistenceContext,
   ConversationTransaction,
 } from "./repository-types";
+import { findConversationTurnByEveId } from "./turn-repository";
 
 export async function recordConversationEventReceipt(
   transaction: ConversationTransaction,
@@ -103,7 +104,7 @@ async function persistReceivedMessage(
   context: ConversationEventPersistenceContext,
   event: Extract<HandleMessageStreamEvent, { type: "message.received" }>,
 ): Promise<void> {
-  const turn = await findTurnByEveId(
+  const turn = await findConversationTurnByEveId(
     context.transaction,
     context.conversation.id,
     event.data.turnId,
@@ -178,7 +179,7 @@ async function persistAssistantMessage(
     readonly eveTurnId: string;
   },
 ): Promise<void> {
-  const turn = await findTurnByEveId(
+  const turn = await findConversationTurnByEveId(
     context.transaction,
     context.conversation.id,
     input.eveTurnId,
@@ -239,7 +240,7 @@ async function settleAssistantDrafts(
   eveTurnId: string,
   status: "STOPPED" | "HIDDEN",
 ): Promise<void> {
-  const turn = await findTurnByEveId(
+  const turn = await findConversationTurnByEveId(
     context.transaction,
     context.conversation.id,
     eveTurnId,
@@ -307,7 +308,7 @@ async function projectStateEvent(
 ): Promise<StateEventProjection | null> {
   switch (context.event.type) {
     case "turn.started": {
-      const turn = await findTurnByEveId(
+      const turn = await findConversationTurnByEveId(
         context.transaction,
         context.conversation.id,
         context.event.data.turnId,
@@ -324,7 +325,7 @@ async function projectStateEvent(
       };
     }
     case "message.completed": {
-      const turn = await findTurnByEveId(
+      const turn = await findConversationTurnByEveId(
         context.transaction,
         context.conversation.id,
         context.event.data.turnId,
@@ -383,7 +384,7 @@ async function turnStateProjection(
   turnStatus: "COMPLETED" | "FAILED" | "CANCELLED",
   publicErrorCode: string | null = null,
 ): Promise<StateEventProjection> {
-  const turn = await findTurnByEveId(
+  const turn = await findConversationTurnByEveId(
     context.transaction,
     context.conversation.id,
     eveTurnId,
@@ -404,27 +405,6 @@ function emptyStateProjection(turnId: string): StateEventProjection {
     turnStatus: null,
     publicErrorCode: null,
   };
-}
-
-async function findTurnByEveId(
-  transaction: ConversationTransaction,
-  conversationId: string,
-  eveTurnId: string,
-) {
-  const [turn] = await transaction
-    .select({
-      id: conversationTurns.id,
-      inputMessageId: conversationTurns.inputMessageId,
-    })
-    .from(conversationTurns)
-    .where(
-      and(
-        eq(conversationTurns.conversationId, conversationId),
-        eq(conversationTurns.eveTurnId, eveTurnId),
-      ),
-    )
-    .limit(1);
-  return turn;
 }
 
 async function allocateMessageSequence(
