@@ -21,6 +21,7 @@ import {
   integrationFailure,
   invalidClientOperation,
 } from "./errors";
+import { cancelActiveRepliesForEmbeddedClient } from "@/src/server/conversations/identity-cancellation";
 import type {
   IntegrationTransaction,
   ManagedEmbeddedClient,
@@ -103,6 +104,7 @@ export async function updateEmbeddedClient(
     throw invalidClientOperation();
   }
   const database = getDatabase();
+  let disabled = false;
   await database.transaction(async (transaction) => {
     const [client] = await transaction
       .select()
@@ -130,6 +132,7 @@ export async function updateEmbeddedClient(
       .where(eq(embeddedClients.id, client.id));
     if (status === "DISABLED" && client.status !== "DISABLED") {
       await revokeClientAccess(transaction, client.id);
+      disabled = true;
     }
     await writeSecurityAudit(transaction, {
       tenantId: actor.tenantId,
@@ -142,6 +145,13 @@ export async function updateEmbeddedClient(
       metadata: { status },
     });
   });
+  if (disabled) {
+    await cancelActiveRepliesForEmbeddedClient(
+      actor,
+      clientId,
+      "EMBEDDED_CLIENT_DISABLED",
+    );
+  }
 }
 
 export async function rotateEmbeddedClientSecret(
@@ -207,6 +217,11 @@ export async function deleteEmbeddedClient(
       outcome: "SUCCESS",
     });
   });
+  await cancelActiveRepliesForEmbeddedClient(
+    actor,
+    clientId,
+    "EMBEDDED_CLIENT_DELETED",
+  );
 }
 
 async function revokeClientAccess(

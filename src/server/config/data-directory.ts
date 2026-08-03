@@ -1,5 +1,3 @@
-import "server-only";
-
 import { constants } from "node:fs";
 import { access, chmod, mkdir, open, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";

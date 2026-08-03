@@ -1,5 +1,3 @@
-import "server-only";
-
 import { resolve } from "node:path";
 import { z } from "zod";
 import { ApplicationError } from "@/src/server/errors";

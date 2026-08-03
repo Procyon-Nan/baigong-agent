@@ -1,5 +1,3 @@
-import "server-only";
-
 import { securityAuditEvents } from "@/src/server/db/schema";
 
 export type SecurityAuditEvent = {

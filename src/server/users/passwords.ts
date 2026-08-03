@@ -20,6 +20,7 @@ import {
   userProfiles,
 } from "@/src/server/db/schema";
 import { ApplicationError } from "@/src/server/errors";
+import { cancelActiveRepliesForUser } from "@/src/server/conversations/identity-cancellation";
 import { invalidUserOperation, userNotFound } from "./errors";
 import { revokeUserSessions } from "./management";
 
@@ -70,6 +71,7 @@ export async function resetManagedUserPassword(
       outcome: "SUCCESS",
     });
   });
+  await cancelActiveRepliesForUser(actor, userId, "USER_PASSWORD_RESET");
   return temporaryPassword;
 }
 

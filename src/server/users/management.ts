@@ -14,6 +14,7 @@ import {
 } from "@/src/server/db/schema";
 import type { UserRole } from "@/src/server/domain/identity";
 import { ApplicationError } from "@/src/server/errors";
+import { cancelActiveRepliesForUser } from "@/src/server/conversations/identity-cancellation";
 import { invalidUserOperation, userNotFound } from "./errors";
 
 type UserTransaction = Parameters<
@@ -29,6 +30,7 @@ export async function updateManagedUser(
   if (!update.status && !update.role) throw invalidUserOperation();
 
   const database = getDatabase();
+  let cancellationTrigger: "USER_DISABLED" | "USER_ROLE_CHANGED" | null = null;
   await database.transaction(async (transaction) => {
     await transaction.execute(
       sql`select pg_advisory_xact_lock(hashtext(${actor.tenantId}))`,
@@ -72,6 +74,12 @@ export async function updateManagedUser(
     if (nextRole !== target.role || nextStatus === "DISABLED") {
       await revokeUserSessions(transaction, userId);
     }
+    cancellationTrigger =
+      nextStatus === "DISABLED" && target.status !== "DISABLED"
+        ? "USER_DISABLED"
+        : nextRole !== target.role
+          ? "USER_ROLE_CHANGED"
+          : null;
     await writeSecurityAudit(transaction, {
       tenantId: actor.tenantId,
       actorUserId: actor.userId,
@@ -88,6 +96,9 @@ export async function updateManagedUser(
       },
     });
   });
+  if (cancellationTrigger) {
+    await cancelActiveRepliesForUser(actor, userId, cancellationTrigger);
+  }
 }
 
 export async function revokeManagedUserSessions(
