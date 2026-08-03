@@ -139,6 +139,11 @@
   padding: 34px 42px 56px;
 }
 
+.wideContent {
+  width: min(100%, 1600px);
+  margin-inline: auto;
+}
+
 @media (max-width: 720px) {
   .applicationFrame {
     grid-template-columns: 1fr;

@@ -19,6 +19,7 @@ export default async function HomePage() {
 
   return (
     <ApplicationFrame
+      contentWidth="wide"
       navigationMode={principal.role === "ADMIN" ? "admin" : "user"}
       user={{ displayName: principal.displayName, role: principal.role }}
     >

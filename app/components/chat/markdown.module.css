@@ -104,9 +104,16 @@
 }
 
 .codeBlock code {
+  display: block;
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 11px;
   white-space: pre;
+}
+
+.markdown :global(.katex-display) {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .blockedImage {

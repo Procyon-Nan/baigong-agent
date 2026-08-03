@@ -283,7 +283,7 @@ function ChatMessageView({ message }: { readonly message: ChatMessage }) {
         )}
       </span>
       <div className={styles.messageBody}>
-        <MarkdownContent markdown={message.text} />
+        <MarkdownContent complete={message.complete} markdown={message.text} />
         {!message.complete ? <span className={styles.streamingCursor} /> : null}
       </div>
       <button

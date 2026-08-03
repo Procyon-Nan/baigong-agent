@@ -8,12 +8,15 @@ import {
   type ComponentProps,
   type ReactNode,
 } from "react";
+import { Highlight, themes } from "prism-react-renderer";
 import ReactMarkdown, { type Components } from "react-markdown";
+import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
 import { safeMarkdownUrl } from "./markdown-policy";
 import styles from "./markdown.module.css";
 
-const components: Components = {
+const contentComponents: Components = {
   a({ href, children }) {
     const safeHref = href ? safeMarkdownUrl(href) : "";
     return safeHref ? (
@@ -32,17 +35,30 @@ const components: Components = {
       </span>
     );
   },
-  pre({ children }) {
-    return <MarkdownCodeBlock>{children}</MarkdownCodeBlock>;
-  },
 };
 
-export function MarkdownContent({ markdown }: { readonly markdown: string }) {
+export function MarkdownContent({
+  complete = true,
+  markdown,
+}: {
+  readonly complete?: boolean;
+  readonly markdown: string;
+}) {
+  const components: Components = {
+    ...contentComponents,
+    pre({ children }) {
+      return (
+        <MarkdownCodeBlock complete={complete}>{children}</MarkdownCodeBlock>
+      );
+    },
+  };
+
   return (
     <div className={styles.markdown}>
       <ReactMarkdown
         components={components}
-        remarkPlugins={[remarkGfm]}
+        rehypePlugins={[[rehypeKatex, { trust: false }]]}
+        remarkPlugins={[remarkGfm, remarkMath]}
         skipHtml
         urlTransform={safeMarkdownUrl}
       >
@@ -52,13 +68,19 @@ export function MarkdownContent({ markdown }: { readonly markdown: string }) {
   );
 }
 
-function MarkdownCodeBlock({ children }: { readonly children: ReactNode }) {
+function MarkdownCodeBlock({
+  children,
+  complete,
+}: {
+  readonly children: ReactNode;
+  readonly complete: boolean;
+}) {
   const [copied, setCopied] = useState(false);
   const child = isValidElement<ComponentProps<"code">>(children)
     ? children
     : null;
   const code = child ? textContent(child.props.children).replace(/\n$/, "") : "";
-  const language = child?.props.className?.match(/language-([^\s]+)/)?.[1];
+  const language = codeLanguage(child?.props.className);
 
   useEffect(() => {
     if (!copied) return;
@@ -92,11 +114,51 @@ function MarkdownCodeBlock({ children }: { readonly children: ReactNode }) {
           )}
         </button>
       </div>
-      <pre>
-        <code className={child.props.className}>{code}</code>
-      </pre>
+      {complete && language ? (
+        <HighlightedCode code={code} language={language} />
+      ) : (
+        <pre>
+          <code className={child.props.className}>{code}</code>
+        </pre>
+      )}
     </div>
   );
+}
+
+function HighlightedCode({
+  code,
+  language,
+}: {
+  readonly code: string;
+  readonly language: string;
+}) {
+  return (
+    <Highlight code={code} language={language} theme={themes.vsDark}>
+      {({ className, getLineProps, getTokenProps, style, tokens }) => (
+        <pre
+          className={className}
+          style={{ ...style, backgroundColor: "transparent" }}
+        >
+          <code className={`language-${language}`}>
+            {tokens.map((line, lineIndex) => (
+              <span key={lineIndex} {...getLineProps({ line })}>
+                {line.map((token, tokenIndex) => (
+                  <span key={tokenIndex} {...getTokenProps({ token })} />
+                ))}
+                {lineIndex < tokens.length - 1 ? "\n" : null}
+              </span>
+            ))}
+          </code>
+        </pre>
+      )}
+    </Highlight>
+  );
+}
+
+function codeLanguage(className: string | undefined): string | null {
+  const value = className?.match(/(?:^|\s)language-([^\s]+)/)?.[1];
+  if (!value || !/^[a-z0-9_+#.-]{1,64}$/i.test(value)) return null;
+  return value.toLowerCase();
 }
 
 function textContent(value: ReactNode): string {

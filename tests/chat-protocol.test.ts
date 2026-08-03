@@ -229,4 +229,31 @@ describe("Markdown URL policy", () => {
     expect(html).not.toContain("javascript:");
     expect(html).not.toContain('src="https://example.com/image.png"');
   });
+
+  it("renders inline and display LaTeX through KaTeX", () => {
+    const html = renderToStaticMarkup(
+      createElement(MarkdownContent, {
+        markdown: "Inline $E = mc^2$ and display:\n\n$$\n\\frac{a}{b}\n$$",
+      }),
+    );
+
+    expect(html).toContain('class="katex"');
+    expect(html).toContain('class="katex-display"');
+    expect(html).toContain("math");
+  });
+
+  it("highlights completed fenced code and leaves streaming code plain", () => {
+    const markdown = "```python\ndef greet(name):\n    return name\n```";
+    const completed = renderToStaticMarkup(
+      createElement(MarkdownContent, { markdown, complete: true }),
+    );
+    const streaming = renderToStaticMarkup(
+      createElement(MarkdownContent, { markdown, complete: false }),
+    );
+
+    expect(completed).toContain("language-python");
+    expect(completed).toContain("token keyword");
+    expect(streaming).toContain("language-python");
+    expect(streaming).not.toContain("token keyword");
+  });
 });

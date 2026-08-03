@@ -6,10 +6,12 @@ import styles from "./application-frame.module.css";
 
 export function ApplicationFrame({
   children,
+  contentWidth = "default",
   navigationMode = "setup",
   user,
 }: {
   readonly children: ReactNode;
+  readonly contentWidth?: "default" | "wide";
   readonly navigationMode?: NavigationMode;
   readonly user?: {
     readonly displayName: string;
@@ -37,7 +39,13 @@ export function ApplicationFrame({
           {user ? <LogoutButton /> : null}
         </div>
       </aside>
-      <main className={styles.mainContent}>{children}</main>
+      <main
+        className={`${styles.mainContent} ${
+          contentWidth === "wide" ? styles.wideContent : ""
+        }`}
+      >
+        {children}
+      </main>
     </div>
   );
 }
