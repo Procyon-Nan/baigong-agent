@@ -4,7 +4,7 @@ import type { HandleMessageStreamEvent } from "eve/client";
 import { purgeUnusedModelCredentials } from "@/src/server/models/configuration";
 import {
   createConversationRepository,
-  type ConversationLifecycleRepository,
+  type ConversationEventRepository,
 } from "./repository";
 
 const CREDENTIAL_RELEASE_EVENTS = new Set<HandleMessageStreamEvent["type"]>([
@@ -19,7 +19,7 @@ export async function applyConversationEvent(
   conversationId: string,
   cursor: number,
   event: HandleMessageStreamEvent,
-  repository: ConversationLifecycleRepository = createConversationRepository(),
+  repository: ConversationEventRepository = createConversationRepository(),
 ): Promise<boolean> {
   const applied = await repository.applyEvent(conversationId, cursor, event);
   if (applied && CREDENTIAL_RELEASE_EVENTS.has(event.type)) {
@@ -37,7 +37,7 @@ export async function monitorEveEvents(input: {
   readonly conversationId: string;
   readonly startIndex: number;
   readonly events: AsyncIterable<HandleMessageStreamEvent>;
-  readonly repository?: ConversationLifecycleRepository;
+  readonly repository?: ConversationEventRepository;
 }): Promise<void> {
   const repository = input.repository ?? createConversationRepository();
   let cursor = input.startIndex;

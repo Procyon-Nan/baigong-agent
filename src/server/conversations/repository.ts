@@ -9,7 +9,6 @@ import {
   inArray,
   lt,
 } from "drizzle-orm";
-import type { HandleMessageStreamEvent } from "eve/client";
 import { writeSecurityAudit } from "@/src/server/audit/repository";
 import {
   isAdminPrincipal,
@@ -31,7 +30,8 @@ import {
   turnChanged,
   userConcurrencyLimit,
 } from "./errors";
-import { applyLifecycleEvent, eventDate } from "./lifecycle-repository";
+import { createConversationEventPersistence } from "./event-persistence";
+import type { ConversationTransaction } from "./repository-types";
 import {
   MAIN_AGENT_ID,
   MAX_ACTIVE_TURNS_PER_USER,
@@ -54,10 +54,6 @@ const TERMINAL_CONVERSATION_STATUSES = [
 ] as const;
 const UNCONFIRMED_SUBMISSION_EXPIRY_MS = 5 * 60 * 1_000;
 
-type ConversationTransaction = Parameters<
-  Parameters<Database["transaction"]>[0]
->[0];
-
 export type ProjectionTurn = {
   readonly turnId: string;
   readonly publicErrorCode: string | null;
@@ -67,12 +63,14 @@ export type ConversationRepository = ReturnType<
   typeof createConversationRepository
 >;
 
-export type ConversationLifecycleRepository = Pick<
+export type ConversationEventRepository = Pick<
   ConversationRepository,
   "applyEvent" | "getRuntimeConversationById"
 >;
 
-export type ConversationCreationRepository = ConversationLifecycleRepository &
+export type ConversationLifecycleRepository = ConversationEventRepository;
+
+export type ConversationCreationRepository = ConversationEventRepository &
   Pick<
     ConversationRepository,
     | "acceptCreation"
@@ -83,7 +81,7 @@ export type ConversationCreationRepository = ConversationLifecycleRepository &
   >;
 
 export type ConversationContinuationRepository =
-  ConversationLifecycleRepository &
+  ConversationEventRepository &
     Pick<
       ConversationRepository,
       | "acceptContinuation"
@@ -93,7 +91,7 @@ export type ConversationContinuationRepository =
     >;
 
 export type ConversationReconciliationRepository =
-  ConversationLifecycleRepository &
+  ConversationEventRepository &
     Pick<
       ConversationRepository,
       "expireUnconfirmedSubmission" | "listPendingConversationIds"
@@ -114,7 +112,7 @@ export type ConversationQueryRepository = Pick<
   "getOwnedConversation"
 >;
 
-export type ConversationStreamRepository = ConversationLifecycleRepository &
+export type ConversationStreamRepository = ConversationEventRepository &
   Pick<
     ConversationRepository,
     "findProjectionTurn" | "getRuntimeConversation"
@@ -123,7 +121,10 @@ export type ConversationStreamRepository = ConversationLifecycleRepository &
 export function createConversationRepository(
   database: Database = getDatabase(),
 ) {
+  const eventPersistence = createConversationEventPersistence(database);
   return {
+    applyEvent: eventPersistence.applyEvent,
+
     reserveCreation(
       principal: AuthenticatedPrincipal,
       requestId: string,
@@ -618,42 +619,6 @@ export function createConversationRepository(
         )
         .limit(1);
       return turn ?? null;
-    },
-
-    applyEvent(
-      conversationId: string,
-      cursor: number,
-      event: HandleMessageStreamEvent,
-    ): Promise<boolean> {
-      return database.transaction(async (transaction) => {
-        const [conversation] = await transaction
-          .select()
-          .from(conversations)
-          .where(eq(conversations.id, conversationId))
-          .limit(1)
-          .for("update");
-        if (!conversation) throw conversationNotFound();
-        if (
-          conversation.lastEveCursor !== null &&
-          conversation.lastEveCursor >= BigInt(cursor)
-        ) {
-          return false;
-        }
-        const expectedCursor =
-          conversation.lastEveCursor === null
-            ? 0n
-            : conversation.lastEveCursor + 1n;
-        if (BigInt(cursor) !== expectedCursor) {
-          throw conversationPersistenceFailure();
-        }
-
-        await applyLifecycleEvent(transaction, conversation, event);
-        await transaction
-          .update(conversations)
-          .set({ lastEveCursor: BigInt(cursor), updatedAt: eventDate(event) })
-          .where(eq(conversations.id, conversationId));
-        return true;
-      });
     },
 
     async listPendingConversationIds(limit: number): Promise<string[]> {

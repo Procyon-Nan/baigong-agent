@@ -1,23 +1,20 @@
 import { and, eq, inArray } from "drizzle-orm";
 import type { HandleMessageStreamEvent } from "eve/client";
-import type { Database } from "@/src/server/db/client";
 import {
   conversationTurns,
   conversations,
 } from "@/src/server/db/schema";
 import { encryptContinuationToken } from "@/src/server/models/credentials";
 import { conversationPersistenceFailure } from "./errors";
-
-type ConversationTransaction = Parameters<
-  Parameters<Database["transaction"]>[0]
->[0];
+import type { ConversationTransaction } from "./repository-types";
 
 export async function applyLifecycleEvent(
   transaction: ConversationTransaction,
   conversation: typeof conversations.$inferSelect,
   event: HandleMessageStreamEvent,
+  eventAt: Date,
 ): Promise<void> {
-  const now = eventDate(event);
+  const now = eventAt;
   switch (event.type) {
     case "turn.started": {
       if (!conversation.activeTurnId) return;
@@ -132,11 +129,6 @@ export async function applyLifecycleEvent(
     default:
       return;
   }
-}
-
-export function eventDate(event: HandleMessageStreamEvent): Date {
-  const parsed = event.meta?.at ? new Date(event.meta.at) : new Date();
-  return Number.isFinite(parsed.getTime()) ? parsed : new Date();
 }
 
 async function settleTurn(
