@@ -21,7 +21,7 @@
     "test:p3:database": "vitest run tests/p3-database.test.ts",
     "test:p3:http": "node --conditions=react-server --import tsx scripts/verify-p3-http.ts",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "next typegen && tsc --noEmit"
   },
   "dependencies": {
     "@ai-sdk/openai": "4.0.24",
