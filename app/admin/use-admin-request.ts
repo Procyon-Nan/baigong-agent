@@ -12,12 +12,13 @@ export function useAdminRequest() {
   async function request<T>(
     path: string,
     init: RequestInit,
+    options: { readonly refresh?: boolean } = {},
   ): Promise<T | null> {
     setPending(path);
     setError("");
     try {
       const result = await requestJson<T>(path, init);
-      router.refresh();
+      if (options.refresh !== false) router.refresh();
       return result;
     } catch (reason) {
       setError(clientErrorMessage(reason));
