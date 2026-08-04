@@ -18,6 +18,16 @@ describe("P4 test database configuration", () => {
     ).toThrow("must identify a database separate from DATABASE_URL");
   });
 
+  it("rejects a database without the dedicated P4 test suffix", () => {
+    expect(() =>
+      configureP4TestDatabase({
+        DATABASE_URL: "postgresql://app@localhost/baigong_agent",
+        P4_TEST_DATABASE_URL:
+          "postgresql://tester@localhost/baigong_agent_acceptance",
+      }),
+    ).toThrow("database name must end with _p4_test");
+  });
+
   it("selects an explicitly separate P4 test database", () => {
     const environment: Record<string, string | undefined> = {
       DATABASE_URL: "postgresql://app@localhost/baigong_agent",

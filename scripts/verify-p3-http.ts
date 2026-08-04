@@ -19,7 +19,7 @@ import {
   stopTestApplication,
   type TestApplication,
   waitForTestApplication,
-} from "./support/p3-http-harness";
+} from "./support/http-test-harness";
 import {
   cleanupP3TestContext,
   configureP3TestDatabase,
@@ -47,7 +47,7 @@ try {
   fakeProvider = await startFakeChatCompletionsServer({ apiKey: fakeApiKey });
   await verifyFakeProviderModes(fakeProvider);
   context = await createP3TestContext("http");
-  application = startTestApplication(port);
+  application = startTestApplication(port, "P3");
   await waitForTestApplication(origin, application);
 
   const adminSource = "192.0.2.73";

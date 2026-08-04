@@ -5,9 +5,13 @@ import { createServer } from "node:http";
 export type TestApplication = {
   readonly process: ChildProcess;
   readonly output: string[];
+  readonly phase: "P3" | "P4";
 };
 
-export function startTestApplication(port: number): TestApplication {
+export function startTestApplication(
+  port: number,
+  phase: TestApplication["phase"],
+): TestApplication {
   const output: string[] = [];
   const child = spawn(
     process.execPath,
@@ -31,7 +35,7 @@ export function startTestApplication(port: number): TestApplication {
       if (output.length > 100) output.shift();
     });
   }
-  return { process: child, output };
+  return { process: child, output, phase };
 }
 
 export async function waitForTestApplication(
@@ -42,7 +46,7 @@ export async function waitForTestApplication(
   while (Date.now() < deadline) {
     if (application.process.exitCode !== null) {
       throw new Error(
-        `P3 测试应用提前退出（${application.process.exitCode}）。\n${application.output.join("")}`,
+        `${application.phase} 测试应用提前退出（${application.process.exitCode}）。\n${application.output.join("")}`,
       );
     }
     try {
@@ -54,7 +58,7 @@ export async function waitForTestApplication(
     await new Promise((resolve) => setTimeout(resolve, 200));
   }
   throw new Error(
-    `P3 测试应用启动超时。\n${application.output.join("")}`,
+    `${application.phase} 测试应用启动超时。\n${application.output.join("")}`,
   );
 }
 

@@ -21,6 +21,7 @@
     "test:p3:database": "vitest run tests/p3-database.test.ts",
     "test:p3:http": "node --conditions=react-server --import tsx scripts/verify-p3-http.ts",
     "test:p4:database": "vitest run --no-file-parallelism tests/p4-database.test.ts tests/p4-listing-database.test.ts tests/p4-usage-database.test.ts tests/p4-action-audit-database.test.ts tests/p4-subagent-database.test.ts tests/p4-admin-audit-database.test.ts",
+    "test:p4:http": "node --conditions=react-server --import tsx scripts/verify-p4-http.ts",
     "test:watch": "vitest",
     "typecheck": "next typegen && tsc --noEmit"
   },

@@ -27,6 +27,7 @@ export function configureDedicatedTestDatabase(
       `${variableName} must identify a database separate from DATABASE_URL.`,
     );
   }
+  if (phase === "P4") validateP4TestDatabaseName(testDatabaseUrl, variableName);
 
   environment.DATABASE_URL = testDatabaseUrl;
   environment.BAIGONG_DATA_DIR ??= `/tmp/baigong-agent-${phase.toLowerCase()}-tests`;
@@ -57,4 +58,17 @@ function validatePostgresUrl(value: string, name: string): URL {
     throw new Error(`${name} must be a valid PostgreSQL URL.`);
   }
   return url;
+}
+
+function validateP4TestDatabaseName(
+  value: string,
+  variableName: string,
+): void {
+  const url = validatePostgresUrl(value, variableName);
+  const databaseName = decodeURIComponent(url.pathname.replace(/^\//, ""));
+  if (!databaseName.toLowerCase().endsWith("_p4_test")) {
+    throw new Error(
+      `${variableName} database name must end with _p4_test.`,
+    );
+  }
 }
