@@ -4,6 +4,7 @@ export type NavigationIcon =
   | "models"
   | "users"
   | "integrations"
+  | "conversations"
   | "settings";
 
 export type NavigationItem = {
@@ -40,6 +41,13 @@ const navigationItems: readonly NavigationItem[] = [
     label: "嵌入接入",
     href: "/admin/integrations",
     icon: "integrations",
+    visibleIn: ["setup", "admin"],
+    enabledIn: ["admin"],
+  },
+  {
+    label: "会话审计",
+    href: "/admin/conversations",
+    icon: "conversations",
     visibleIn: ["setup", "admin"],
     enabledIn: ["admin"],
   },

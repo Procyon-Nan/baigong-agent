@@ -5,6 +5,7 @@ import {
   Boxes,
   KeyRound,
   LockKeyhole,
+  MessageSquareText,
   Settings,
   UsersRound,
 } from "lucide-react";
@@ -23,6 +24,7 @@ const navigationIcons = {
   models: Boxes,
   users: UsersRound,
   integrations: KeyRound,
+  conversations: MessageSquareText,
   settings: Settings,
 } satisfies Record<NavigationIcon, typeof Bot>;
 

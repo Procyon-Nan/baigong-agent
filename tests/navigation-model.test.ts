@@ -16,6 +16,7 @@ describe("navigation model", () => {
       { href: "/admin/models", enabled: false },
       { href: "/admin/users", enabled: false },
       { href: "/admin/integrations", enabled: false },
+      { href: "/admin/conversations", enabled: false },
       { href: "/settings", enabled: false },
     ]);
   });
@@ -30,6 +31,7 @@ describe("navigation model", () => {
       "/admin/models",
       "/admin/users",
       "/admin/integrations",
+      "/admin/conversations",
       "/settings",
     ]);
   });

@@ -27,6 +27,12 @@ import type { PublicConversation } from "./types";
 export { cancelConversationTurn } from "./cancellation";
 export { continueConversation } from "./continuation";
 export { createConversation } from "./creation";
+export {
+  archiveAdminConversation,
+  getAdminConversationAuditDetails,
+  getAdminConversationExecutionIndex,
+  listAdminConversations,
+} from "./admin-conversation-service";
 export { applyConversationEvent, monitorEveEvents } from "./lifecycle";
 export { getConversation } from "./queries";
 export {

@@ -14,6 +14,17 @@ import {
   encodeConversationListCursor,
 } from "@/src/server/conversations/conversation-cursors";
 import { parseJsonBody } from "@/src/server/http/request";
+import {
+  parseAdminConversationDetailQuery,
+  parseAdminConversationExecutionQuery,
+  parseAdminConversationListQuery,
+} from "@/src/server/http/p4-admin-conversation-schemas";
+import {
+  decodeAdminConversationActionCursor,
+  decodeAdminConversationListCursor,
+  encodeAdminConversationActionCursor,
+  encodeAdminConversationListCursor,
+} from "@/src/server/conversations/admin-conversation-cursors";
 
 const requestId = "11111111-1111-4111-8111-111111111111";
 
@@ -128,5 +139,63 @@ describe("conversation request validation", () => {
       id: "22222222-2222-4222-8222-222222222222",
     });
     expect(() => decodeConversationListCursor(historyCursor)).toThrowError();
+  });
+
+  it("parses strict administrator audit filters", () => {
+    expect(
+      parseAdminConversationListQuery(
+        new URLSearchParams(
+          "userId=user-1&source=LOCAL&status=WAITING&archived=active",
+        ),
+      ),
+    ).toEqual({
+      userId: "user-1",
+      source: "LOCAL",
+      status: "WAITING",
+      archived: "active",
+    });
+    expect(
+      parseAdminConversationListQuery(
+        new URLSearchParams("userId=&source=&status=&archived=all"),
+      ),
+    ).toEqual({ archived: "all" });
+    expect(() =>
+      parseAdminConversationListQuery(new URLSearchParams("role=ADMIN")),
+    ).toThrowError();
+    expect(() =>
+      parseAdminConversationDetailQuery(
+        new URLSearchParams("cursor=a&cursor=b"),
+      ),
+    ).toThrowError();
+    expect(
+      parseAdminConversationExecutionQuery(new URLSearchParams()),
+    ).toEqual({});
+  });
+
+  it("binds administrator list cursors to their filters", () => {
+    const filterKey = JSON.stringify(["user-1", "LOCAL", "WAITING", "active"]);
+    const cursor = encodeAdminConversationListCursor({
+      updatedAt: "2026-08-04T00:00:00.000Z",
+      id: "11111111-1111-4111-8111-111111111111",
+      filterKey,
+    });
+    expect(decodeAdminConversationListCursor(cursor, filterKey)?.id).toBe(
+      "11111111-1111-4111-8111-111111111111",
+    );
+    expect(() =>
+      decodeAdminConversationListCursor(cursor, "different-filter"),
+    ).toThrowError();
+
+    const actionCursor = encodeAdminConversationActionCursor({
+      requestEveCursor: 12,
+      id: "22222222-2222-4222-8222-222222222222",
+    });
+    expect(decodeAdminConversationActionCursor(actionCursor)).toEqual({
+      requestEveCursor: 12,
+      id: "22222222-2222-4222-8222-222222222222",
+    });
+    expect(() =>
+      decodeAdminConversationActionCursor(cursor),
+    ).toThrowError();
   });
 });
