@@ -170,6 +170,7 @@ describe("chat message state", () => {
     role: "assistant" as const,
     text: "旧文本",
     complete: false,
+    createdAt: "2026-07-30T00:00:00.000Z",
   };
 
   it("uses the authoritative snapshot when a retry rewrites partial output", () => {
@@ -178,17 +179,24 @@ describe("chat message state", () => {
         id: draft.id,
         delta: "不会直接追加",
         snapshot: "重试后的文本",
+        createdAt: "2026-07-30T00:00:01.000Z",
       }),
     ).toEqual([{ ...draft, text: "重试后的文本" }]);
   });
 
   it("never lets a later delta reopen or discard a completed reply", () => {
-    const completed = completeAssistantMessage([draft], draft.id, "最终文本");
+    const completed = completeAssistantMessage(
+      [draft],
+      draft.id,
+      "最终文本",
+      "2026-07-30T00:00:01.000Z",
+    );
     expect(
       applyAssistantDelta(completed, {
         id: draft.id,
         delta: "迟到增量",
         snapshot: "错误快照",
+        createdAt: "2026-07-30T00:00:02.000Z",
       }),
     ).toEqual(completed);
     expect(discardIncompleteAssistantMessage(completed, draft.id)).toEqual(

@@ -1,0 +1,263 @@
+.conversationSidebar {
+  display: grid;
+  grid-template-rows: 58px auto minmax(0, 1fr) auto;
+  height: calc(100dvh - 90px);
+  min-height: 540px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.overlaySidebar,
+.conversationSidebarOpen {
+  --sidebar-translation: -105%;
+}
+
+.overlaySidebar {
+  position: fixed;
+  z-index: 60;
+  inset: 0 auto 0 0;
+  width: min(88vw, 320px);
+  height: 100dvh;
+  min-height: 0;
+  border-radius: 0;
+  box-shadow: 10px 0 30px rgb(28 39 44 / 18%);
+  transform: translateX(var(--sidebar-translation));
+  transition: transform 160ms ease;
+}
+
+.conversationSidebarOpen {
+  --sidebar-translation: 0;
+}
+
+.sidebarHeader {
+  display: flex;
+  padding: 0 10px 0 14px;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+}
+
+.sidebarHeader strong {
+  font-size: 13px;
+}
+
+.sidebarHeaderActions {
+  display: flex;
+  gap: 3px;
+}
+
+.detailIconButton {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  place-items: center;
+  cursor: pointer;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.detailIconButton:hover,
+.detailIconButton:focus-visible {
+  background: #edf1f3;
+  color: var(--accent);
+}
+
+.sidebarCloseButton {
+  display: none;
+}
+
+.overlaySidebar .sidebarCloseButton {
+  display: grid;
+}
+
+.conversationTabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.conversationTabs button {
+  min-height: 30px;
+  cursor: pointer;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 11px;
+}
+
+.conversationTabs button:hover,
+.conversationTabs button:focus-visible,
+.conversationTabs .activeConversationTab {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.conversationList {
+  min-height: 0;
+  padding: 6px;
+  overflow-y: auto;
+}
+
+.sidebarEmpty {
+  margin: 22px 8px;
+  color: var(--text-muted);
+  font-size: 11px;
+  text-align: center;
+}
+
+.conversationRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-height: 48px;
+  margin-bottom: 2px;
+  align-items: center;
+  border-radius: 6px;
+}
+
+.conversationRow:hover,
+.conversationRow:focus-within,
+.activeConversationRow {
+  background: #edf1f3;
+}
+
+.activeConversationRow {
+  box-shadow: inset 3px 0 var(--accent);
+}
+
+.conversationSelectButton {
+  min-width: 0;
+  padding: 8px 6px 8px 10px;
+  cursor: pointer;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+
+.conversationSelectButton strong,
+.conversationSelectButton small {
+  display: block;
+}
+
+.conversationSelectButton strong {
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversationSelectButton small {
+  margin-top: 3px;
+  color: var(--text-muted);
+  font-size: 9px;
+}
+
+.conversationRowActions {
+  display: flex;
+  padding-right: 5px;
+  opacity: 0;
+}
+
+.conversationRow:hover .conversationRowActions,
+.conversationRow:focus-within .conversationRowActions {
+  opacity: 1;
+}
+
+.conversationActionButton {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  place-items: center;
+  cursor: pointer;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.conversationActionButton:hover,
+.conversationActionButton:focus-visible {
+  background: #ffffff;
+  color: var(--accent);
+}
+
+.renameConversationForm {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 4px;
+  margin-bottom: 4px;
+  padding: 6px;
+  border-radius: 6px;
+  background: #edf1f3;
+}
+
+.renameConversationForm input {
+  min-width: 0;
+  padding: 6px 7px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  font: inherit;
+  font-size: 10px;
+}
+
+.renameConversationForm button,
+.loadMoreConversations {
+  cursor: pointer;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: #ffffff;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 9px;
+}
+
+.loadMoreConversations {
+  min-height: 34px;
+  margin: 0 8px 8px;
+}
+
+.loadMoreConversations:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+@media (max-width: 900px) {
+  .conversationSidebar {
+    position: fixed;
+    z-index: 60;
+    inset: 0 auto 0 0;
+    width: min(88vw, 320px);
+    height: 100dvh;
+    min-height: 0;
+    border-radius: 0;
+    box-shadow: 10px 0 30px rgb(28 39 44 / 18%);
+    transform: translateX(var(--sidebar-translation, -105%));
+    transition: transform 160ms ease;
+  }
+
+  .conversationSidebarOpen {
+    --sidebar-translation: 0;
+  }
+
+  .sidebarCloseButton {
+    display: grid;
+  }
+}
+
+@media (max-width: 720px) {
+  .conversationSidebar {
+    width: 100%;
+    border: 0;
+  }
+}

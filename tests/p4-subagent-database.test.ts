@@ -13,6 +13,7 @@ import {
   securityAuditEvents,
 } from "@/src/server/db/schema";
 import type { ConversationRepository } from "@/src/server/conversations/repository";
+import { getConversationSnapshot } from "@/src/server/conversations/service";
 import { prepareP4Conversation } from "./support/p4-conversation-fixtures";
 import {
   cleanupP4TestContext,
@@ -109,6 +110,24 @@ describe("P4 subagent linking", () => {
       parentCalledCursor: 2n,
       childStartedCursor: 0n,
       status: "RUNNING",
+    });
+    await expect(
+      getConversationSnapshot(context.administrator, parentConversationId),
+    ).resolves.toMatchObject({
+      context: {
+        kind: "MAIN",
+        parentConversationId: null,
+        subagentName: null,
+        linkStatus: "NOT_APPLICABLE",
+      },
+      subagents: [
+        {
+          conversationId: childConversationId,
+          name: "researcher",
+          linkStatus: "VERIFIED",
+          status: "RUNNING",
+        },
+      ],
     });
     await repository.applyEvent(
       childConversationId,

@@ -1,0 +1,144 @@
+.conversationRail {
+  position: relative;
+  display: flex;
+  min-height: 0;
+  padding: 24px 0;
+  align-items: center;
+  flex-direction: column;
+  gap: 11px;
+  overflow-y: auto;
+  border-right: 1px solid var(--border);
+}
+
+.railLine {
+  position: absolute;
+  top: 25px;
+  bottom: 25px;
+  left: 50%;
+  width: 1px;
+  background: var(--border-strong);
+  transform: translateX(-50%);
+}
+
+.railMarker {
+  position: relative;
+  z-index: 1;
+  width: 7px;
+  height: 7px;
+  padding: 0;
+  flex: 0 0 auto;
+  cursor: pointer;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  background: var(--surface);
+}
+
+.railMarker:hover,
+.railMarker:focus-visible,
+.activeRailMarker {
+  border-color: var(--accent);
+  background: var(--accent);
+  outline: 0;
+  transform: scale(1.25);
+}
+
+.mobileRailButton,
+.mobileRailPanel {
+  display: none;
+}
+
+@media (max-width: 720px) {
+  .conversationRail {
+    display: none;
+  }
+
+  .mobileRailButton {
+    position: absolute;
+    z-index: 2;
+    top: 10px;
+    left: 10px;
+    display: grid;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    place-items: center;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: rgb(255 255 255 / 92%);
+    color: var(--text-muted);
+  }
+
+  .mobileRailPanel {
+    position: absolute;
+    z-index: 3;
+    inset: 0;
+    display: grid;
+    grid-template-rows: 52px minmax(0, 1fr);
+    background: var(--surface);
+  }
+
+  .mobileRailPanel header {
+    display: flex;
+    padding: 0 12px;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+  }
+
+  .detailIconButton {
+    display: grid;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    place-items: center;
+    cursor: pointer;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-muted);
+  }
+
+  .detailIconButton:hover,
+  .detailIconButton:focus-visible {
+    background: #edf1f3;
+    color: var(--accent);
+  }
+
+  .mobileRailPanel ol {
+    margin: 0;
+    padding: 8px;
+    overflow-y: auto;
+    list-style: none;
+  }
+
+  .mobileRailPanel li button {
+    display: flex;
+    width: 100%;
+    min-height: 44px;
+    padding: 7px 9px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    cursor: pointer;
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-size: 10px;
+    text-align: left;
+  }
+
+  .mobileRailPanel li button:hover,
+  .mobileRailPanel li button[aria-current="location"] {
+    background: var(--accent-soft);
+  }
+
+  .mobileRailPanel time {
+    flex: 0 0 auto;
+    color: var(--text-muted);
+    font-size: 9px;
+  }
+}

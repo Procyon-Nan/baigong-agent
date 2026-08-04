@@ -3,7 +3,11 @@ import "server-only";
 import { and, asc, desc, eq, gt, lt, ne, or } from "drizzle-orm";
 import { getDatabase, type Database } from "@/src/server/db/client";
 import {
+  conversations,
   conversationMessages,
+  type ConversationKind,
+  type ConversationLinkStatus,
+  type ConversationStatus,
   type ConversationMessageRole,
   type ConversationMessageStatus,
 } from "@/src/server/db/schema";
@@ -68,10 +72,25 @@ export type ConversationNodePage = {
 
 export type ConversationSnapshot = {
   readonly conversation: PublicConversation;
+  readonly context: {
+    readonly kind: ConversationKind;
+    readonly parentConversationId: string | null;
+    readonly subagentName: string | null;
+    readonly linkStatus: ConversationLinkStatus;
+  };
   readonly messages: ConversationHistoryPage;
   readonly hasMoreHistory: boolean;
   readonly lastEveCursor: number | null;
   readonly tokenUsage: ConversationUsageSummary | null;
+  readonly subagents: readonly ConversationSubagentSummary[];
+};
+
+export type ConversationSubagentSummary = {
+  readonly conversationId: string;
+  readonly name: string;
+  readonly linkStatus: "PENDING" | "VERIFIED";
+  readonly status: ConversationStatus;
+  readonly createdAt: string;
 };
 
 export function createConversationHistoryRepository(
@@ -92,16 +111,27 @@ export function createConversationHistoryRepository(
       const activeTurn = conversation.activeTurnId
         ? await readActiveTurn(database, conversation.activeTurnId)
         : undefined;
-      const messages = await listHistoryPage(database, conversation.id, before);
-      const tokenUsage = await createConversationUsageRepository(
-        database,
-      ).getSummary(principal.tenantId, conversation.id);
+      const [messages, tokenUsage, subagents] = await Promise.all([
+        listHistoryPage(database, conversation.id, before),
+        createConversationUsageRepository(database).getSummary(
+          principal.tenantId,
+          conversation.id,
+        ),
+        listVisibleSubagents(database, principal.tenantId, conversation.id),
+      ]);
       return {
         conversation: toPublicConversation(conversation, activeTurn),
+        context: {
+          kind: conversation.kind,
+          parentConversationId: conversation.parentConversationId,
+          subagentName: conversation.subagentName,
+          linkStatus: conversation.linkStatus,
+        },
         messages,
         hasMoreHistory: messages.nextCursor !== null,
         lastEveCursor: safeCursorNumber(conversation.lastEveCursor),
         tokenUsage,
+        subagents,
       };
     },
 
@@ -172,6 +202,47 @@ export function createConversationHistoryRepository(
       };
     },
   };
+}
+
+async function listVisibleSubagents(
+  database: Pick<Database, "select">,
+  tenantId: string,
+  parentConversationId: string,
+): Promise<readonly ConversationSubagentSummary[]> {
+  const rows = await database
+    .select({
+      conversationId: conversations.id,
+      name: conversations.subagentName,
+      linkStatus: conversations.linkStatus,
+      status: conversations.status,
+      createdAt: conversations.createdAt,
+    })
+    .from(conversations)
+    .where(
+      and(
+        eq(conversations.tenantId, tenantId),
+        eq(conversations.parentConversationId, parentConversationId),
+        eq(conversations.kind, "SUBAGENT"),
+        or(
+          eq(conversations.linkStatus, "PENDING"),
+          eq(conversations.linkStatus, "VERIFIED"),
+        ),
+      ),
+    )
+    .orderBy(asc(conversations.createdAt), asc(conversations.id));
+  return rows.flatMap((row) =>
+    row.name && (row.linkStatus === "PENDING" || row.linkStatus === "VERIFIED")
+      ? [
+          {
+            conversationId: row.conversationId,
+            name: row.name,
+            linkStatus: row.linkStatus,
+            status: row.status,
+            createdAt: row.createdAt.toISOString(),
+          },
+        ]
+      : [],
+  );
 }
 
 export type ConversationHistoryRepository = ReturnType<

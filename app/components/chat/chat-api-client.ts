@@ -58,11 +58,36 @@ export async function requestConversation(
 ): Promise<unknown> {
   const headers = authorizationHeaders(options.authorizationToken);
   headers.set("content-type", "application/json");
-  const response = await fetch(path, {
-    method: options.method,
-    headers,
-    body: JSON.stringify(options.body),
-  });
+  return readJsonResponse(
+    await fetch(path, {
+      method: options.method,
+      headers,
+      body: JSON.stringify(options.body),
+    }),
+    Boolean(options.authorizationToken),
+  );
+}
+
+export async function readConversationData(
+  path: string,
+  options: {
+    readonly authorizationToken?: string;
+    readonly signal?: AbortSignal;
+  } = {},
+): Promise<unknown> {
+  return readJsonResponse(
+    await fetch(path, {
+      headers: authorizationHeaders(options.authorizationToken),
+      signal: options.signal,
+    }),
+    Boolean(options.authorizationToken),
+  );
+}
+
+async function readJsonResponse(
+  response: Response,
+  embeddedRequest: boolean,
+): Promise<unknown> {
   let payload: unknown = null;
   let parsed = false;
   try {
@@ -73,8 +98,7 @@ export async function requestConversation(
     // upstream response does not contain JSON.
   }
   const authenticationExpired =
-    response.status === 401 ||
-    (Boolean(options.authorizationToken) && response.status === 403);
+    response.status === 401 || (embeddedRequest && response.status === 403);
   if (authenticationExpired) {
     throw new ConversationRequestError(
       publicApiError(payload, "登录状态已失效，请重新登录。"),

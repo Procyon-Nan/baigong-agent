@@ -1,0 +1,212 @@
+.messages {
+  min-height: 0;
+  padding: 18px clamp(12px, 4vw, 48px);
+  overflow-y: auto;
+  scroll-behavior: smooth;
+}
+
+.historyLoading {
+  margin: 0 auto 12px;
+  color: var(--text-muted);
+  font-size: 10px;
+  text-align: center;
+}
+
+.emptyState {
+  display: grid;
+  min-height: 100%;
+  place-content: center;
+  justify-items: center;
+  gap: 9px;
+  color: var(--accent);
+}
+
+.emptyState strong {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.message {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) 28px;
+  gap: 10px;
+  width: min(100%, 780px);
+  margin: 0 auto 20px;
+  align-items: start;
+}
+
+.message[data-role="user"] .messageBody {
+  padding: 10px 12px;
+  border: 1px solid #d5e5e9;
+  border-radius: 7px;
+  background: #f0f7f8;
+}
+
+.message[data-role="delegation"] .messageBody {
+  padding: 10px 12px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 7px;
+  background: var(--surface-subtle);
+}
+
+.delegationLabel {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--accent);
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.messageAvatar {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 6px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.message[data-role="user"] .messageAvatar {
+  background: #edf0f2;
+  color: #56656d;
+}
+
+.messageBody {
+  min-width: 0;
+  padding: 5px 0;
+  font-size: 13px;
+}
+
+.copyButton {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  place-items: center;
+  cursor: pointer;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  opacity: 0;
+}
+
+.message:hover .copyButton,
+.copyButton:focus-visible {
+  opacity: 1;
+}
+
+.copyButton:hover {
+  background: #edf1f3;
+  color: var(--accent);
+}
+
+.streamingCursor {
+  display: inline-block;
+  width: 6px;
+  height: 13px;
+  margin-left: 3px;
+  background: var(--accent);
+  animation: blink 1s step-end infinite;
+  vertical-align: -2px;
+}
+
+.subagentTimelineItem {
+  width: min(100%, 780px);
+  margin: 0 auto 20px;
+  padding-left: 40px;
+}
+
+.subagentCard {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) 30px;
+  min-height: 54px;
+  padding: 9px 10px;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-subtle);
+}
+
+.subagentIcon {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: 6px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.subagentCard strong,
+.subagentCard small {
+  display: block;
+}
+
+.subagentCard strong {
+  font-size: 11px;
+}
+
+.subagentCard small {
+  margin-top: 3px;
+  color: var(--text-muted);
+  font-size: 9px;
+}
+
+.subagentCard button {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  place-items: center;
+  cursor: pointer;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--accent);
+}
+
+.subagentCard button:hover,
+.subagentCard button:focus-visible {
+  background: var(--accent-soft);
+}
+
+.subagentCard button:disabled {
+  cursor: not-allowed;
+  color: var(--text-muted);
+  opacity: 0.5;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .messages {
+    padding-right: 10px;
+    padding-left: 10px;
+  }
+
+  .message {
+    grid-template-columns: 28px minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .messageAvatar {
+    width: 28px;
+    height: 28px;
+  }
+
+  .copyButton {
+    grid-column: 2;
+    opacity: 1;
+  }
+
+  .subagentTimelineItem {
+    padding-left: 36px;
+  }
+}

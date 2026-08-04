@@ -25,6 +25,15 @@ export type PublicConversationEvent =
   | PublicEvent<"turn.completed", { readonly turnId: string }>
   | PublicEvent<"turn.cancelled", { readonly turnId: string }>
   | PublicEvent<
+      "subagent.created",
+      {
+        readonly childConversationId: string;
+        readonly name: string;
+        readonly linkStatus: "PENDING" | "VERIFIED";
+        readonly status: ConversationStatus;
+      }
+    >
+  | PublicEvent<
       "turn.failed",
       {
         readonly turnId: string;
@@ -67,7 +76,11 @@ export type ConversationMutationResult = {
 export function parseConversationMutationResult(
   value: unknown,
 ): ConversationMutationResult | null {
-  if (!isRecord(value) || !isRecord(value.conversation) || !isRecord(value.turn)) {
+  if (
+    !isRecord(value) ||
+    !isRecord(value.conversation) ||
+    !isRecord(value.turn)
+  ) {
     return null;
   }
   const conversation = value.conversation;
@@ -164,6 +177,22 @@ export function parsePublicConversationEvent(
             },
           }
         : null;
+    case "subagent.created":
+      return typeof data.childConversationId === "string" &&
+        typeof data.name === "string" &&
+        (data.linkStatus === "PENDING" || data.linkStatus === "VERIFIED") &&
+        isConversationStatus(data.status)
+        ? {
+            ...base,
+            type: value.type,
+            data: {
+              childConversationId: data.childConversationId,
+              name: data.name,
+              linkStatus: data.linkStatus,
+              status: data.status,
+            },
+          }
+        : null;
     case "authentication.expired":
       return isPublicError(data.error)
         ? { ...base, type: value.type, data: { error: data.error } }
@@ -183,7 +212,9 @@ export function splitNdjson(
   return { lines: parts.slice(0, -1), remainder: parts.at(-1) ?? "" };
 }
 
-function isConversationStatus(value: unknown): value is ConversationStatus {
+export function isConversationStatus(
+  value: unknown,
+): value is ConversationStatus {
   return (
     value === "STARTING" ||
     value === "RUNNING" ||
@@ -214,6 +245,6 @@ function isPublicErrorCode(
   );
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }

@@ -1,18 +1,16 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef } from "react";
 import {
   chatClientErrorMessage,
   isConversationAuthenticationError,
-  readConversationEventStream,
   requestConversation,
 } from "./chat-api-client";
-import {
-  applyAssistantDelta,
-  completeAssistantMessage,
-  discardIncompleteAssistantMessage,
-  type ChatMessage,
-} from "./message-state";
+import type { ConversationSnapshot } from "./conversation-data-protocol";
+import { useConversationState } from "./conversation-state";
+import { useConversationHistory } from "./use-conversation-history";
+import { useConversationStream } from "./use-conversation-stream";
+import type { ChatMessage } from "./message-state";
 import {
   parseConversationMutationResult,
   type ConversationStatus,
@@ -30,69 +28,71 @@ export function useChatConversation(options: {
   readonly modelAvailable: boolean | null;
   readonly onAuthenticationExpired?: () => void;
 }) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [message, setMessage] = useState("");
-  const [conversationId, setConversationId] = useState<string | null>(null);
-  const [activeTurnId, setActiveTurnId] = useState<string | null>(null);
-  const [status, setStatus] = useState<ConversationStatus | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const [failedMessage, setFailedMessage] = useState("");
-  const [reconnecting, setReconnecting] = useState(false);
-  const [streamGeneration, setStreamGeneration] = useState(0);
+  const { dispatch, getState, state } = useConversationState();
   const cursor = useRef<number | null>(null);
   const lastSubmittedMessage = useRef("");
   const failedSubmission = useRef<FailedSubmission | null>(null);
-  const streamAbort = useRef<AbortController | null>(null);
-  const busyRef = useRef(false);
 
-  useEffect(() => {
-    busyRef.current = busy;
-  }, [busy]);
+  function expireAuthentication(
+    message = "登录状态已失效，请重新登录。",
+  ): void {
+    dispatch({ type: "authentication.expired", error: message });
+    if (options.onAuthenticationExpired) options.onAuthenticationExpired();
+    else window.location.assign("/login");
+  }
 
-  useEffect(() => {
-    if (!conversationId || !busy) return;
-    const controller = new AbortController();
-    streamAbort.current?.abort();
-    streamAbort.current = controller;
-
-    void readConversationEventStream({
-      authorizationToken: options.authorizationToken,
-      conversationId,
-      cursor: cursor.current,
-      signal: controller.signal,
-      onEvent(event) {
-        if (
-          controller.signal.aborted ||
-          event.conversationId !== conversationId
-        ) {
-          return;
-        }
-        if (
-          event.type !== "heartbeat" &&
-          event.type !== "authentication.expired" &&
-          cursor.current !== null &&
-          event.cursor <= cursor.current
-        ) {
-          return;
-        }
-        handleEvent(event);
-      },
-      onAuthenticationExpired: expireAuthentication,
-    }).then((endedNormally) => {
-      if (endedNormally && busyRef.current && !controller.signal.aborted) {
-        setReconnecting(true);
-        window.setTimeout(
-          () => setStreamGeneration((generation) => generation + 1),
-          1_000,
-        );
-      }
+  function handleEvent(event: PublicConversationEvent): void {
+    if (event.type === "authentication.expired") {
+      expireAuthentication(event.data.error.message);
+      return;
+    }
+    if (event.type === "turn.failed") {
+      failedSubmission.current = {
+        text: lastSubmittedMessage.current,
+        requestId: crypto.randomUUID(),
+        appendUserMessage: false,
+        retryOfTurnId: event.data.turnId,
+      };
+    }
+    dispatch({
+      type: "public-event.received",
+      event,
+      failedMessage: lastSubmittedMessage.current,
     });
+  }
 
-    return () => controller.abort();
-  }, [options.authorizationToken, busy, conversationId, streamGeneration]);
+  const stream = useConversationStream({
+    authorizationToken: options.authorizationToken,
+    busy: state.busy,
+    conversationId: state.conversationId,
+    cursor,
+    onAuthenticationExpired: expireAuthentication,
+    onEvent: handleEvent,
+    onReconnectingChange(reconnecting) {
+      dispatch({ type: "reconnecting.updated", reconnecting });
+    },
+    shouldReconnect() {
+      const current = getState();
+      return (
+        current.busy && current.conversationId === state.conversationId
+      );
+    },
+  });
 
-  async function sendMessage(text: string) {
+  const history = useConversationHistory({
+    authorizationToken: options.authorizationToken,
+    dispatch,
+    getState,
+    onAuthenticationExpired: expireAuthentication,
+    onSnapshotLoaded(snapshot, activeInput) {
+      stream.stop();
+      cursor.current = snapshot.lastEveCursor;
+      lastSubmittedMessage.current = activeInput;
+      failedSubmission.current = null;
+    },
+  });
+
+  async function sendMessage(text: string): Promise<void> {
     await submitMessage({
       text,
       requestId: crypto.randomUUID(),
@@ -100,50 +100,42 @@ export function useChatConversation(options: {
     });
   }
 
-  async function retryFailedMessage() {
+  async function retryFailedMessage(): Promise<void> {
     const submission = failedSubmission.current;
     if (submission) await submitMessage(submission);
   }
 
-  async function submitMessage(submission: FailedSubmission) {
-    const { appendUserMessage, requestId, text } = submission;
-    const trimmed = text.trim();
+  async function submitMessage(submission: FailedSubmission): Promise<void> {
+    const current = getState();
+    const trimmed = submission.text.trim();
     if (
       !trimmed ||
-      busyRef.current ||
-      isTerminal(status) ||
+      current.busy ||
+      isTerminal(current.status) ||
+      isReadOnly(current.conversationContext, current.archivedAt) ||
       options.modelAvailable === false
     ) {
       return;
     }
-    if (appendUserMessage) {
-      const userMessage: ChatMessage = {
-        id: crypto.randomUUID(),
-        role: "user",
-        text: trimmed,
-        complete: true,
-      };
-      setMessages((current) => [...current, userMessage]);
-    }
-    setMessage("");
-    setError("");
-    setFailedMessage("");
+    const userMessage = submission.appendUserMessage
+      ? createOptimisticUserMessage(trimmed, current.messages)
+      : undefined;
+    dispatch({ type: "submission.started", userMessage });
     failedSubmission.current = null;
     lastSubmittedMessage.current = trimmed;
-    setBusy(true);
-    busyRef.current = true;
 
     try {
+      const creating = current.conversationId === null;
       const result = await requestConversation(
-        conversationId
-          ? `/api/conversations/${conversationId}/messages`
+        current.conversationId
+          ? `/api/conversations/${current.conversationId}/messages`
           : "/api/conversations",
         {
           authorizationToken: options.authorizationToken,
           method: "POST",
           body: {
             message: trimmed,
-            requestId,
+            requestId: submission.requestId,
             ...(submission.retryOfTurnId
               ? { retryOfTurnId: submission.retryOfTurnId }
               : {}),
@@ -152,161 +144,103 @@ export function useChatConversation(options: {
       );
       const mutation = parseConversationMutationResult(result);
       if (!mutation) throw new Error("服务器响应格式无效。");
-      if (!conversationId) cursor.current = null;
-      setConversationId(mutation.conversationId);
-      setActiveTurnId(mutation.turnId);
-      setStatus(mutation.status);
-    } catch (reason) {
-      busyRef.current = false;
-      setBusy(false);
-      if (isConversationAuthenticationError(reason)) {
-        expireAuthentication(chatClientErrorMessage(reason));
-        return;
+      if (creating) {
+        cursor.current = null;
+        history.initializeNewConversation();
       }
-      failedSubmission.current = {
-        text: trimmed,
-        requestId,
-        appendUserMessage: false,
-      };
-      setFailedMessage(trimmed);
-      setError(chatClientErrorMessage(reason));
-    }
-  }
-
-  async function cancel() {
-    if (!conversationId || !activeTurnId) return;
-    setStatus("CANCELLING");
-    try {
-      await requestConversation(`/api/conversations/${conversationId}/cancel`, {
-        authorizationToken: options.authorizationToken,
-        method: "POST",
-        body: { turnId: activeTurnId },
+      dispatch({
+        type: "submission.accepted",
+        mutation,
+        creating,
+        title: trimmed.slice(0, 60),
       });
     } catch (reason) {
       if (isConversationAuthenticationError(reason)) {
         expireAuthentication(chatClientErrorMessage(reason));
         return;
       }
-      setError(chatClientErrorMessage(reason));
+      failedSubmission.current = {
+        text: trimmed,
+        requestId: submission.requestId,
+        appendUserMessage: false,
+      };
+      dispatch({
+        type: "submission.failed",
+        error: chatClientErrorMessage(reason),
+        failedMessage: trimmed,
+      });
     }
   }
 
-  function newConversation() {
-    streamAbort.current?.abort();
-    busyRef.current = false;
+  async function cancel(): Promise<void> {
+    const current = getState();
+    if (!current.conversationId || !current.activeTurnId) return;
+    dispatch({ type: "cancel.requested" });
+    try {
+      await requestConversation(
+        `/api/conversations/${current.conversationId}/cancel`,
+        {
+          authorizationToken: options.authorizationToken,
+          method: "POST",
+          body: { turnId: current.activeTurnId },
+        },
+      );
+    } catch (reason) {
+      if (isConversationAuthenticationError(reason)) {
+        expireAuthentication(chatClientErrorMessage(reason));
+        return;
+      }
+      dispatch({
+        type: "cancel.failed",
+        previousStatus: current.status,
+        error: chatClientErrorMessage(reason),
+      });
+    }
+  }
+
+  function newConversation(): void {
+    history.reset();
+    stream.stop();
     cursor.current = null;
     lastSubmittedMessage.current = "";
-    setMessages([]);
-    setMessage("");
-    setConversationId(null);
-    setActiveTurnId(null);
-    setStatus(null);
-    setBusy(false);
-    setError("");
-    setFailedMessage("");
     failedSubmission.current = null;
-    setReconnecting(false);
+    dispatch({ type: "reset" });
   }
 
-  function updateMessage(value: string) {
-    if (messageFitsRequest(value)) setMessage(value);
-  }
-
-  function handleEvent(event: PublicConversationEvent) {
-    setReconnecting(false);
-    if (event.type !== "heartbeat") cursor.current = event.cursor;
-    switch (event.type) {
-      case "conversation.status":
-        setStatus(event.data.status);
-        if (event.data.status === "WAITING" || isTerminal(event.data.status)) {
-          finishTurn();
-        }
-        break;
-      case "turn.started":
-        setActiveTurnId(event.data.turnId);
-        break;
-      case "assistant.delta":
-        setMessages((current) =>
-          applyAssistantDelta(current, {
-            id: event.data.blockId,
-            delta: event.data.delta,
-            snapshot: event.data.text,
-          }),
-        );
-        break;
-      case "assistant.completed":
-        setMessages((current) =>
-          completeAssistantMessage(
-            current,
-            event.data.blockId,
-            event.data.text,
-          ),
-        );
-        break;
-      case "turn.completed":
-        setActiveTurnId(null);
-        break;
-      case "turn.cancelled":
-        setActiveTurnId(null);
-        setError("已停止生成。");
-        break;
-      case "turn.failed": {
-        const discardBlockId = event.data.discardBlockId;
-        if (discardBlockId) {
-          setMessages((current) =>
-            discardIncompleteAssistantMessage(current, discardBlockId),
-          );
-        }
-        failedSubmission.current = {
-          text: lastSubmittedMessage.current,
-          requestId: crypto.randomUUID(),
-          appendUserMessage: false,
-          retryOfTurnId: event.data.turnId,
-        };
-        setFailedMessage(lastSubmittedMessage.current);
-        setError(event.data.error.message);
-        setActiveTurnId(null);
-        break;
-      }
-      case "authentication.expired":
-        expireAuthentication(event.data.error.message);
-        break;
-      case "heartbeat":
-        break;
+  function updateMessage(value: string): void {
+    if (messageFitsRequest(value)) {
+      dispatch({ type: "draft.updated", value });
     }
   }
 
-  function finishTurn() {
-    busyRef.current = false;
-    setBusy(false);
-    setActiveTurnId(null);
-    setReconnecting(false);
-  }
-
-  function expireAuthentication(message = "登录状态已失效，请重新登录。") {
-    busyRef.current = false;
-    setBusy(false);
-    setError(message);
-    setReconnecting(false);
-    if (options.onAuthenticationExpired) options.onAuthenticationExpired();
-    else window.location.assign("/login");
-  }
-
+  const readOnly = isReadOnly(state.conversationContext, state.archivedAt);
   return {
-    busy,
+    archivedAt: state.archivedAt,
+    busy: state.busy,
     cancel,
-    cancellable: busy && activeTurnId !== null,
-    conversationId,
-    error,
-    failedMessage,
-    message,
-    messages,
+    cancellable: state.busy && state.activeTurnId !== null,
+    conversationContext: state.conversationContext,
+    conversationId: state.conversationId,
+    conversationTitle: state.conversationTitle,
+    error: state.error,
+    failedMessage: state.failedMessage,
+    hasMoreHistory: state.hasMoreHistory,
+    historyRevision: state.historyRevision,
+    loadEarlierMessages: history.loadEarlierMessages,
+    loadingEarlier: state.loadingEarlier,
+    message: state.message,
+    messages: state.messages,
     newConversation,
-    reconnecting,
+    readOnly,
+    reconnecting: state.reconnecting,
     retryFailedMessage,
+    revealMessage: history.revealMessage,
+    selectConversation: history.selectConversation,
+    selecting: state.selecting,
     sendMessage,
-    status,
-    terminal: isTerminal(status),
+    status: state.status,
+    subagents: state.subagents,
+    terminal: isTerminal(state.status),
     updateMessage,
   } as const;
 }
@@ -318,8 +252,38 @@ type FailedSubmission = {
   readonly retryOfTurnId?: string;
 };
 
+function createOptimisticUserMessage(
+  text: string,
+  messages: readonly ChatMessage[],
+): ChatMessage {
+  return {
+    id: crypto.randomUUID(),
+    role: "user",
+    text,
+    complete: true,
+    createdAt: new Date().toISOString(),
+    sequence: nextMessageSequence(messages),
+  };
+}
+
+function nextMessageSequence(messages: readonly ChatMessage[]): number {
+  return (
+    messages.reduce(
+      (highest, message) => Math.max(highest, message.sequence ?? 0),
+      0,
+    ) + 1
+  );
+}
+
 function isTerminal(status: ConversationStatus | null): boolean {
   return status === "TERMINAL_FAILED" || status === "TERMINAL_COMPLETED";
+}
+
+function isReadOnly(
+  context: ConversationSnapshot["context"] | null,
+  archivedAt: string | null,
+): boolean {
+  return archivedAt !== null || context?.kind === "SUBAGENT";
 }
 
 function messageFitsRequest(message: string): boolean {
