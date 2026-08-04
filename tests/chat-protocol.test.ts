@@ -148,6 +148,26 @@ describe("chat API client", () => {
     expect(authenticationExpired).toHaveBeenCalledOnce();
   });
 
+  it("continues an event stream strictly after the snapshot cursor", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      new Response(null, { status: 204 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await readConversationEventStream({
+      conversationId: "conversation-1",
+      cursor: 12,
+      signal: new AbortController().signal,
+      onEvent: vi.fn(),
+      onAuthenticationExpired: vi.fn(),
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/conversations/conversation-1/events?after=12",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+  });
+
   it("classifies unauthorized embedded mutations as authentication expiry", async () => {
     vi.stubGlobal(
       "fetch",

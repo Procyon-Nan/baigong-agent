@@ -47,7 +47,8 @@ export function useConversationStream(options: {
   }, []);
 
   useEffect(() => {
-    if (!options.conversationId || !options.busy) return;
+    const conversationId = options.conversationId;
+    if (!conversationId || !options.busy) return;
     const generation = ++connectionGeneration.current;
     const activeController = new AbortController();
     controller.current?.abort();
@@ -56,22 +57,17 @@ export function useConversationStream(options: {
 
     void readConversationEventStream({
       authorizationToken: options.authorizationToken,
-      conversationId: options.conversationId,
+      conversationId,
       cursor: options.cursor.current,
       signal: activeController.signal,
       onEvent(event) {
+        if (!isCurrentConnection()) return;
         if (
-          activeController.signal.aborted ||
-          generation !== connectionGeneration.current ||
-          event.conversationId !== options.conversationId
-        ) {
-          return;
-        }
-        if (
-          event.type !== "heartbeat" &&
-          event.type !== "authentication.expired" &&
-          options.cursor.current !== null &&
-          event.cursor <= options.cursor.current
+          !shouldAcceptConversationEvent(
+            event,
+            conversationId,
+            options.cursor.current,
+          )
         ) {
           return;
         }
@@ -79,6 +75,7 @@ export function useConversationStream(options: {
         callbacks.current.onEvent(event);
       },
       onAuthenticationExpired() {
+        if (!isCurrentConnection()) return;
         callbacks.current.onAuthenticationExpired();
       },
     }).then((endedNormally) => {
@@ -99,6 +96,13 @@ export function useConversationStream(options: {
       }, RECONNECT_DELAY_MS);
     });
 
+    function isCurrentConnection(): boolean {
+      return (
+        !activeController.signal.aborted &&
+        generation === connectionGeneration.current
+      );
+    }
+
     return () => {
       activeController.abort();
       clearReconnectTimer(reconnectTimer);
@@ -113,6 +117,18 @@ export function useConversationStream(options: {
   ]);
 
   return { stop } as const;
+}
+
+export function shouldAcceptConversationEvent(
+  event: PublicConversationEvent,
+  conversationId: string,
+  cursor: number | null,
+): boolean {
+  if (event.conversationId !== conversationId) return false;
+  if (event.type === "heartbeat" || event.type === "authentication.expired") {
+    return true;
+  }
+  return cursor === null || event.cursor > cursor;
 }
 
 function clearReconnectTimer(

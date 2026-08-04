@@ -64,6 +64,69 @@ describe("conversation state", () => {
     ]);
   });
 
+  it("does not duplicate a completed reply replayed across the snapshot boundary", () => {
+    const loaded = conversationStateReducer(createInitialConversationState(), {
+      type: "snapshot.applied",
+      snapshot: snapshot(),
+      messages: [
+        {
+          id: "assistant-1",
+          role: "assistant",
+          text: "已持久化回答",
+          complete: true,
+          createdAt: timestamp,
+          sequence: 2,
+        },
+      ],
+    });
+    const replayed = conversationStateReducer(loaded, {
+      type: "public-event.received",
+      failedMessage: "",
+      event: assistantCompletedEvent("已持久化回答", 2),
+    });
+
+    expect(replayed.messages).toEqual(loaded.messages);
+  });
+
+  it("applies the first live reply after a loaded snapshot without losing text", () => {
+    const loaded = conversationStateReducer(createInitialConversationState(), {
+      type: "snapshot.applied",
+      snapshot: snapshot(),
+      messages: [],
+    });
+    const streaming = conversationStateReducer(loaded, {
+      type: "public-event.received",
+      failedMessage: "",
+      event: {
+        type: "assistant.delta",
+        conversationId: "conversation-1",
+        cursor: 2,
+        at: timestamp,
+        data: {
+          turnId: "turn-1",
+          blockId: "assistant-1",
+          delta: "新回答",
+          text: "新回答",
+        },
+      },
+    });
+    const completed = conversationStateReducer(streaming, {
+      type: "public-event.received",
+      failedMessage: "",
+      event: assistantCompletedEvent("新回答完成", 3),
+    });
+
+    expect(completed.messages).toEqual([
+      {
+        id: "assistant-1",
+        role: "assistant",
+        text: "新回答完成",
+        complete: true,
+        createdAt: timestamp,
+      },
+    ]);
+  });
+
   it("restores the previous status when cancellation fails", () => {
     const running = {
       ...createInitialConversationState(),
@@ -119,5 +182,19 @@ function snapshot(): ConversationSnapshot {
     messages: { items: [], nextCursor: "older" },
     lastEveCursor: 1,
     subagents: [],
+  };
+}
+
+function assistantCompletedEvent(text: string, cursor: number) {
+  return {
+    type: "assistant.completed" as const,
+    conversationId: "conversation-1",
+    cursor,
+    at: timestamp,
+    data: {
+      turnId: "turn-1",
+      blockId: "assistant-1",
+      text,
+    },
   };
 }
