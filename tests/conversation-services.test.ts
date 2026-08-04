@@ -46,8 +46,10 @@ const reserved: ReservedConversationTurn = {
 
 const publicConversation: PublicConversation = {
   id: reserved.conversationId,
+  title: "hello",
   status: "RUNNING",
   activeTurn: { id: reserved.turnId, status: "RUNNING" },
+  archivedAt: null,
   createdAt: reserved.createdAt.toISOString(),
   updatedAt: reserved.updatedAt.toISOString(),
 };

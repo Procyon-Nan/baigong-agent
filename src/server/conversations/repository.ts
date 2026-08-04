@@ -25,8 +25,10 @@ import {
   userConcurrencyLimit,
 } from "./errors";
 import { createConversationEventPersistence } from "./event-persistence";
+import { assertMainConversationQuota } from "./limits";
 import { userMessageBlockId } from "./message-identifiers";
 import { deriveConversationTitle } from "./message-title";
+import { toPublicConversation } from "./public-conversation";
 import type { ConversationTransaction } from "./repository-types";
 import {
   findInteractionProjectionOrigin,
@@ -146,6 +148,7 @@ export function createConversationRepository(
         );
         if (duplicate) return { kind: "duplicate", value: duplicate };
 
+        await assertMainConversationQuota(transaction, principal);
         await assertUserConcurrency(transaction, principal);
         const model = await lockCurrentModelConfigurationVersion(
           transaction,
@@ -236,6 +239,7 @@ export function createConversationRepository(
         );
         if (!conversation) throw conversationNotFound();
         if (conversation.kind !== "MAIN") throw conversationUnavailable();
+        if (conversation.archivedAt !== null) throw conversationUnavailable();
         const duplicate = await findRequestTurn(
           transaction,
           principal,
@@ -1023,15 +1027,7 @@ async function getOwnedPublicConversation(
         conversation.activeTurnId,
       )
     : null;
-  return {
-    id: conversation.id,
-    status: conversation.status,
-    activeTurn: activeTurn
-      ? { id: activeTurn.id, status: activeTurn.status }
-      : null,
-    createdAt: conversation.createdAt.toISOString(),
-    updatedAt: conversation.updatedAt.toISOString(),
-  };
+  return toPublicConversation(conversation, activeTurn);
 }
 
 function toReserved(

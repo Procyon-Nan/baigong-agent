@@ -9,6 +9,8 @@ import type {
 
 export const MAIN_AGENT_ID = "main";
 export const MAX_ACTIVE_TURNS_PER_USER = 3;
+export const MAX_MAIN_CONVERSATIONS_PER_USER = 50;
+export const CONVERSATION_LIST_PAGE_SIZE = 10;
 
 export type PublicConversationTurn = {
   readonly id: string;
@@ -17,8 +19,10 @@ export type PublicConversationTurn = {
 
 export type PublicConversation = {
   readonly id: string;
+  readonly title: string;
   readonly status: ConversationStatus;
   readonly activeTurn: PublicConversationTurn | null;
+  readonly archivedAt: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
 };

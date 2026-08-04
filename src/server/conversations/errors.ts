@@ -27,6 +27,25 @@ export function conversationUnavailable(): ApplicationError {
   });
 }
 
+export function conversationQuotaExceeded(): ApplicationError {
+  return new ApplicationError({
+    code: "CONVERSATION_LIMIT_REACHED",
+    message: "未归档主会话数量已达到上限。",
+    status: 409,
+    expose: true,
+  });
+}
+
+export function invalidConversationCursor(cause?: unknown): ApplicationError {
+  return new ApplicationError({
+    code: "INVALID_CONVERSATION_CURSOR",
+    message: "对话分页游标无效。",
+    status: 400,
+    expose: true,
+    cause,
+  });
+}
+
 export function conversationAuthenticationExpired(): ApplicationError {
   return new ApplicationError({
     code: "AUTHENTICATION_EXPIRED",
