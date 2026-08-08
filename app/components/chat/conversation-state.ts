@@ -14,6 +14,8 @@ import {
 import type {
   ConversationMutationResult,
   ConversationStatus,
+  PublicPendingInput,
+  PublicTodoItem,
   PublicConversationEvent,
 } from "./protocol";
 
@@ -25,6 +27,8 @@ export type ConversationViewState = {
   readonly conversationContext: ConversationSnapshot["context"] | null;
   readonly archivedAt: string | null;
   readonly subagents: readonly ConversationSubagent[];
+  readonly todos: readonly PublicTodoItem[];
+  readonly pendingInput: PublicPendingInput | null;
   readonly activeTurnId: string | null;
   readonly status: ConversationStatus | null;
   readonly busy: boolean;
@@ -128,6 +132,8 @@ export function conversationStateReducer(
         conversationContext: action.snapshot.context,
         archivedAt: action.snapshot.conversation.archivedAt,
         subagents: action.snapshot.subagents,
+        todos: action.snapshot.uiState.todos,
+        pendingInput: action.snapshot.uiState.pendingInput,
         activeTurnId,
         status: action.snapshot.conversation.status,
         busy: activeTurnId !== null,
@@ -145,6 +151,7 @@ export function conversationStateReducer(
           ? [...state.messages, action.userMessage]
           : state.messages,
         message: "",
+        pendingInput: null,
         busy: true,
         error: "",
         failedMessage: "",
@@ -153,7 +160,9 @@ export function conversationStateReducer(
       return {
         ...state,
         conversationId: action.mutation.conversationId,
-        conversationTitle: action.creating ? action.title : state.conversationTitle,
+        conversationTitle: action.creating
+          ? action.title
+          : state.conversationTitle,
         conversationContext: action.creating
           ? mainConversationContext()
           : state.conversationContext,
@@ -210,6 +219,8 @@ export function createInitialConversationState(): ConversationViewState {
     conversationContext: null,
     archivedAt: null,
     subagents: [],
+    todos: [],
+    pendingInput: null,
     activeTurnId: null,
     status: null,
     busy: false,
@@ -231,6 +242,9 @@ function applyPublicEvent(
   const current = { ...state, reconnecting: false };
   switch (event.type) {
     case "conversation.status":
+      if (event.data.status === "WAITING" && state.activeTurnId !== null) {
+        return current;
+      }
       return event.data.status === "WAITING" || isTerminal(event.data.status)
         ? {
             ...current,
@@ -241,7 +255,13 @@ function applyPublicEvent(
           }
         : { ...current, status: event.data.status };
     case "turn.started":
-      return { ...current, activeTurnId: event.data.turnId };
+      return {
+        ...current,
+        activeTurnId: event.data.turnId,
+        pendingInput: null,
+        status: state.status === "CANCELLING" ? "CANCELLING" : "RUNNING",
+        busy: true,
+      };
     case "assistant.delta":
       return {
         ...current,
@@ -273,23 +293,39 @@ function applyPublicEvent(
           createdAt: event.at,
         }),
       };
+    case "input.requested":
+      return { ...current, pendingInput: event.data };
+    case "todo.updated":
+      return { ...current, todos: event.data.items };
     case "turn.completed":
-      return { ...current, activeTurnId: null };
+      return event.data.turnId === state.activeTurnId
+        ? { ...current, activeTurnId: null }
+        : current;
     case "turn.cancelled":
-      return { ...current, activeTurnId: null, error: "已停止生成。" };
+      return event.data.turnId === state.activeTurnId
+        ? {
+            ...current,
+            activeTurnId: null,
+            pendingInput: null,
+            error: "已停止生成。",
+          }
+        : current;
     case "turn.failed":
-      return {
-        ...current,
-        messages: event.data.discardBlockId
-          ? discardIncompleteAssistantMessage(
-              state.messages,
-              event.data.discardBlockId,
-            )
-          : state.messages,
-        failedMessage,
-        error: event.data.error.message,
-        activeTurnId: null,
-      };
+      return event.data.turnId === state.activeTurnId
+        ? {
+            ...current,
+            messages: event.data.discardBlockId
+              ? discardIncompleteAssistantMessage(
+                  state.messages,
+                  event.data.discardBlockId,
+                )
+              : state.messages,
+            failedMessage,
+            error: event.data.error.message,
+            activeTurnId: null,
+            pendingInput: null,
+          }
+        : current;
     case "authentication.expired":
     case "heartbeat":
       return current;

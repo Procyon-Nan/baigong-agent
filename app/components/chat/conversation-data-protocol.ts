@@ -1,6 +1,9 @@
+import type { PublicConversationUiState } from "@/src/shared/conversation-ui-state";
 import {
   isConversationStatus,
   isRecord,
+  parsePendingInput,
+  parseTodoItems,
   type ConversationStatus,
 } from "./protocol";
 
@@ -24,8 +27,18 @@ export type ConversationHistoryMessage = {
   readonly role: "USER" | "ASSISTANT" | "DELEGATION";
   readonly status: "STREAMING" | "COMPLETED" | "STOPPED";
   readonly body: string;
+  readonly attachments: readonly ConversationAttachment[];
   readonly createdAt: string;
   readonly updatedAt: string;
+};
+
+export type ConversationAttachment = {
+  readonly id: string;
+  readonly displayName: string;
+  readonly mediaType: string;
+  readonly sizeBytes: number;
+  readonly previewUrl: string;
+  readonly downloadUrl: string;
 };
 
 export type ConversationSubagent = {
@@ -47,6 +60,7 @@ export type ConversationSnapshot = {
   readonly messages: ConversationHistoryPage;
   readonly lastEveCursor: number | null;
   readonly subagents: readonly ConversationSubagent[];
+  readonly uiState: PublicConversationUiState;
 };
 
 export type ConversationHistoryPage = {
@@ -104,11 +118,13 @@ export function parseConversationSnapshot(
   const subagents = Array.isArray(value.subagents)
     ? value.subagents.map(parseConversationSubagent)
     : null;
+  const uiState = parseConversationUiState(value.uiState);
   if (
     !conversation ||
     !context ||
     !messages ||
     !subagents ||
+    !uiState ||
     subagents.some((subagent) => subagent === null) ||
     !isNullableSafeCursor(value.lastEveCursor)
   ) {
@@ -120,7 +136,20 @@ export function parseConversationSnapshot(
     messages,
     lastEveCursor: value.lastEveCursor as number | null,
     subagents: subagents as ConversationSubagent[],
+    uiState,
   };
+}
+
+function parseConversationUiState(
+  value: unknown,
+): PublicConversationUiState | null {
+  if (!isRecord(value)) return null;
+  const todos = parseTodoItems(value.todos);
+  const pendingInput =
+    value.pendingInput === null ? null : parsePendingInput(value.pendingInput);
+  return todos && pendingInput !== undefined
+    ? { todos, pendingInput }
+    : null;
 }
 
 export function parseConversationHistoryPage(
@@ -222,11 +251,14 @@ function parseHistoryMessage(
     !isHistoryRole(value.role) ||
     !isHistoryStatus(value.status) ||
     typeof value.body !== "string" ||
+    !Array.isArray(value.attachments) ||
     !isTimestamp(value.createdAt) ||
     !isTimestamp(value.updatedAt)
   ) {
     return null;
   }
+  const attachments = value.attachments.map(parseConversationAttachment);
+  if (attachments.some((attachment) => attachment === null)) return null;
   return {
     id: value.id,
     turnId: value.turnId,
@@ -234,8 +266,34 @@ function parseHistoryMessage(
     role: value.role,
     status: value.status,
     body: value.body,
+    attachments: attachments as ConversationAttachment[],
     createdAt: value.createdAt,
     updatedAt: value.updatedAt,
+  };
+}
+
+function parseConversationAttachment(
+  value: unknown,
+): ConversationAttachment | null {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== "string" ||
+    typeof value.displayName !== "string" ||
+    typeof value.mediaType !== "string" ||
+    !Number.isSafeInteger(value.sizeBytes) ||
+    (value.sizeBytes as number) <= 0 ||
+    typeof value.previewUrl !== "string" ||
+    typeof value.downloadUrl !== "string"
+  ) {
+    return null;
+  }
+  return {
+    id: value.id,
+    displayName: value.displayName,
+    mediaType: value.mediaType,
+    sizeBytes: value.sizeBytes as number,
+    previewUrl: value.previewUrl,
+    downloadUrl: value.downloadUrl,
   };
 }
 

@@ -107,6 +107,83 @@ describe("chat protocol", () => {
       }),
     ).toMatchObject({ type: "heartbeat", cursor: -1 });
   });
+
+  it("parses safe question and todo events without internal tool fields", () => {
+    const base = {
+      conversationId: "conversation-1",
+      at: "2026-07-30T00:00:00.000Z",
+    };
+    expect(
+      parsePublicConversationEvent({
+        ...base,
+        type: "input.requested",
+        cursor: 3,
+        data: {
+          origin: "MAIN",
+          requests: [
+            {
+              requestId: "request-1",
+              prompt: "请选择资料范围",
+              display: "select",
+              allowFreeform: true,
+              options: [
+                {
+                  id: "all",
+                  label: "全部资料",
+                  description: null,
+                  style: "primary",
+                },
+              ],
+              action: { toolName: "ask_question", input: "private" },
+            },
+          ],
+        },
+      }),
+    ).toEqual({
+      ...base,
+      type: "input.requested",
+      cursor: 3,
+      data: {
+        origin: "MAIN",
+        requests: [
+          {
+            requestId: "request-1",
+            prompt: "请选择资料范围",
+            display: "select",
+            allowFreeform: true,
+            options: [
+              {
+                id: "all",
+                label: "全部资料",
+                description: null,
+                style: "primary",
+              },
+            ],
+          },
+        ],
+      },
+    });
+    expect(
+      parsePublicConversationEvent({
+        ...base,
+        type: "todo.updated",
+        cursor: 4,
+        data: {
+          items: [
+            { content: "读取资料", priority: "medium", status: "pending" },
+          ],
+          callId: "private-call",
+        },
+      }),
+    ).toMatchObject({
+      type: "todo.updated",
+      data: {
+        items: [
+          { content: "读取资料", priority: "medium", status: "pending" },
+        ],
+      },
+    });
+  });
 });
 
 describe("chat API client", () => {

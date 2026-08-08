@@ -78,6 +78,54 @@
   font-size: 13px;
 }
 
+.attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.imageAttachment,
+.fileAttachment {
+  color: inherit;
+  text-decoration: none;
+}
+
+.imageAttachment {
+  display: grid;
+  gap: 0.35rem;
+  max-width: 15rem;
+}
+
+.imageAttachment img {
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  display: block;
+  max-height: 12rem;
+  max-width: 100%;
+  object-fit: contain;
+}
+
+.imageAttachment span,
+.fileAttachment span {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.fileAttachment {
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  display: grid;
+  gap: 0.25rem;
+  min-width: 12rem;
+  padding: 0.75rem;
+}
+
+.fileAttachment strong {
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+
 .copyButton {
   display: grid;
   width: 28px;

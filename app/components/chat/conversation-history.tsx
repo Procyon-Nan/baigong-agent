@@ -200,6 +200,36 @@ function ChatMessageView({ message }: { readonly message: ChatMessage }) {
           <small className={styles.delegationLabel}>主 Agent 委派</small>
         ) : null}
         <MarkdownContent complete={message.complete} markdown={message.text} />
+        {message.attachments && message.attachments.length > 0 ? (
+          <div className={styles.attachments}>
+            {message.attachments.map((attachment) =>
+              attachment.mediaType.startsWith("image/") ? (
+                <a
+                  className={styles.imageAttachment}
+                  href={attachment.previewUrl}
+                  key={attachment.id}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element -- authenticated attachment URLs are not image optimizer inputs. */}
+                  <img alt={attachment.displayName} src={attachment.previewUrl} />
+                  <span>{attachment.displayName}</span>
+                </a>
+              ) : (
+                <a
+                  className={styles.fileAttachment}
+                  href={attachment.previewUrl}
+                  key={attachment.id}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  <strong>{attachment.displayName}</strong>
+                  <span>{formatFileSize(attachment.sizeBytes)} · PDF</span>
+                </a>
+              ),
+            )}
+          </div>
+        ) : null}
         {!message.complete ? <span className={styles.streamingCursor} /> : null}
       </div>
       <button
@@ -224,6 +254,12 @@ function ChatMessageView({ message }: { readonly message: ChatMessage }) {
       </button>
     </article>
   );
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1_024) return `${bytes} B`;
+  if (bytes < 1_024 * 1_024) return `${(bytes / 1_024).toFixed(1)} KiB`;
+  return `${(bytes / (1_024 * 1_024)).toFixed(1)} MiB`;
 }
 
 type TimelineItem =

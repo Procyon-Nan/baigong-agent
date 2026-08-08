@@ -16,5 +16,6 @@ export function fromConversationHistoryMessage(
     complete: message.status !== "STREAMING",
     createdAt: message.createdAt,
     sequence: message.sequence,
+    attachments: message.attachments,
   };
 }

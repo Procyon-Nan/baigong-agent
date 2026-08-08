@@ -1,3 +1,19 @@
+import type {
+  PublicInputOption,
+  PublicInputRequest,
+  PublicInteractionOrigin,
+  PublicPendingInput,
+  PublicTodoItem,
+} from "@/src/shared/conversation-ui-state";
+
+export type {
+  PublicInputOption,
+  PublicInputRequest,
+  PublicInteractionOrigin,
+  PublicPendingInput,
+  PublicTodoItem,
+} from "@/src/shared/conversation-ui-state";
+
 export type ConversationStatus =
   | "STARTING"
   | "RUNNING"
@@ -33,6 +49,8 @@ export type PublicConversationEvent =
         readonly status: ConversationStatus;
       }
     >
+  | PublicEvent<"input.requested", PublicPendingInput>
+  | PublicEvent<"todo.updated", { readonly items: readonly PublicTodoItem[] }>
   | PublicEvent<
       "turn.failed",
       {
@@ -193,6 +211,16 @@ export function parsePublicConversationEvent(
             },
           }
         : null;
+    case "input.requested": {
+      const pendingInput = parsePendingInput(data);
+      return pendingInput
+        ? { ...base, type: value.type, data: pendingInput }
+        : null;
+    }
+    case "todo.updated": {
+      const items = parseTodoItems(data.items);
+      return items ? { ...base, type: value.type, data: { items } } : null;
+    }
     case "authentication.expired":
       return isPublicError(data.error)
         ? { ...base, type: value.type, data: { error: data.error } }
@@ -202,6 +230,130 @@ export function parsePublicConversationEvent(
     default:
       return null;
   }
+}
+
+export function parsePendingInput(
+  value: unknown,
+): PublicPendingInput | undefined {
+  if (
+    !isRecord(value) ||
+    !isInteractionOrigin(value.origin) ||
+    !Array.isArray(value.requests) ||
+    value.requests.length === 0
+  ) {
+    return undefined;
+  }
+  const requests = value.requests.map(parseInputRequest);
+  return requests.some((request) => request === null)
+    ? undefined
+    : {
+        origin: value.origin,
+        requests: requests as PublicInputRequest[],
+      };
+}
+
+export function parseTodoItems(
+  value: unknown,
+): readonly PublicTodoItem[] | null {
+  if (!Array.isArray(value)) return null;
+  const items = value.map(parseTodoItem);
+  return items.some((item) => item === null)
+    ? null
+    : (items as PublicTodoItem[]);
+}
+
+function parseInputRequest(value: unknown): PublicInputRequest | null {
+  if (
+    !isRecord(value) ||
+    typeof value.requestId !== "string" ||
+    typeof value.prompt !== "string" ||
+    !isInputDisplay(value.display) ||
+    typeof value.allowFreeform !== "boolean" ||
+    !Array.isArray(value.options)
+  ) {
+    return null;
+  }
+  const options = value.options.map(parseInputOption);
+  return options.some((option) => option === null)
+    ? null
+    : {
+        requestId: value.requestId,
+        prompt: value.prompt,
+        display: value.display,
+        allowFreeform: value.allowFreeform,
+        options: options as PublicInputOption[],
+      };
+}
+
+function parseInputOption(value: unknown): PublicInputOption | null {
+  return isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.label === "string" &&
+    (typeof value.description === "string" || value.description === null) &&
+    isInputOptionStyle(value.style)
+    ? {
+        id: value.id,
+        label: value.label,
+        description: value.description,
+        style: value.style,
+      }
+    : null;
+}
+
+function parseTodoItem(value: unknown): PublicTodoItem | null {
+  return isRecord(value) &&
+    typeof value.content === "string" &&
+    isTodoPriority(value.priority) &&
+    isTodoStatus(value.status)
+    ? {
+        content: value.content,
+        priority: value.priority,
+        status: value.status,
+      }
+    : null;
+}
+
+function isInteractionOrigin(
+  value: unknown,
+): value is PublicInteractionOrigin {
+  return value === "MAIN" || value === "SUBAGENT";
+}
+
+function isInputDisplay(
+  value: unknown,
+): value is PublicInputRequest["display"] {
+  return (
+    value === null ||
+    value === "text" ||
+    value === "confirmation" ||
+    value === "select"
+  );
+}
+
+function isInputOptionStyle(
+  value: unknown,
+): value is PublicInputOption["style"] {
+  return (
+    value === null ||
+    value === "default" ||
+    value === "primary" ||
+    value === "danger"
+  );
+}
+
+function isTodoPriority(
+  value: unknown,
+): value is PublicTodoItem["priority"] {
+  return value === "high" || value === "medium" || value === "low";
+}
+
+function isTodoStatus(value: unknown): value is PublicTodoItem["status"] {
+  return (
+    value === "pending" ||
+    value === "in_progress" ||
+    value === "completed" ||
+    value === "cancelled"
+  );
 }
 
 export function splitNdjson(

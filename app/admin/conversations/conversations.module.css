@@ -301,6 +301,44 @@
   overflow-wrap: anywhere;
 }
 
+.messageAttachments {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.messageAttachment {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.messageAttachment strong,
+.messageAttachment small {
+  display: block;
+}
+
+.messageAttachment small {
+  margin-top: 3px;
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.messageAttachment > span {
+  display: flex;
+  gap: 9px;
+  flex: 0 0 auto;
+}
+
+.messageAttachment a {
+  color: var(--accent);
+  font-size: 11px;
+}
+
 .subagentItem {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

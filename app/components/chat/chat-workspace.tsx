@@ -5,10 +5,12 @@ import {
   ChevronLeft,
   Menu,
   MessageSquarePlus,
+  Paperclip,
   PanelRightOpen,
   RotateCcw,
   Send,
   Square,
+  X,
 } from "lucide-react";
 import {
   useCallback,
@@ -20,10 +22,12 @@ import {
   type KeyboardEvent,
 } from "react";
 import { ConversationHistory } from "./conversation-history";
+import { ConversationInteractions } from "./conversation-interactions";
 import { ConversationRail } from "./conversation-rail";
 import { ConversationSidebar } from "./conversation-sidebar";
 import { ExecutionDetails } from "./execution-details";
 import { useChatConversation } from "./use-chat-conversation";
+import { useAttachmentUploads } from "./use-attachment-uploads";
 import { useConversationList } from "./use-conversation-list";
 import { useConversationNodes } from "./use-conversation-nodes";
 import styles from "./chat-workspace.module.css";
@@ -35,6 +39,8 @@ export function ChatWorkspace({
   displayName,
   enableExecutionDetails = false,
   modelAvailable = null,
+  supportsImageInput = false,
+  supportsNativePdfInput = false,
   onAuthenticationExpired,
 }: {
   readonly authorizationToken?: string;
@@ -43,6 +49,8 @@ export function ChatWorkspace({
   readonly displayName: string;
   readonly enableExecutionDetails?: boolean;
   readonly modelAvailable?: boolean | null;
+  readonly supportsImageInput?: boolean;
+  readonly supportsNativePdfInput?: boolean;
   readonly onAuthenticationExpired?: () => void;
 }) {
   const layout = useRef<HTMLDivElement | null>(null);
@@ -66,6 +74,12 @@ export function ChatWorkspace({
   const conversation = useChatConversation({
     authorizationToken,
     modelAvailable,
+    onAuthenticationExpired: handleAuthenticationExpired,
+  });
+  const attachments = useAttachmentUploads({
+    authorizationToken,
+    supportsImageInput,
+    supportsNativePdfInput,
     onAuthenticationExpired: handleAuthenticationExpired,
   });
   const conversationList = useConversationList({
@@ -106,9 +120,13 @@ export function ChatWorkspace({
     conversationList.refresh,
   ]);
 
-  function submit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    void conversation.sendMessage(conversation.message);
+    const accepted = await conversation.sendMessage(
+      conversation.message,
+      attachments.uploaded,
+    );
+    if (accepted) attachments.consumeUploaded();
   }
 
   function submitWithKeyboard(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -119,6 +137,7 @@ export function ChatWorkspace({
   }
 
   function startNewConversation() {
+    attachments.clearPending();
     setDetailsOpen(false);
     setSidebarOpen(false);
     setActiveNodeId(null);
@@ -127,6 +146,7 @@ export function ChatWorkspace({
   }
 
   async function selectConversation(conversationId: string) {
+    attachments.clearPending();
     setSidebarOpen(false);
     setDetailsOpen(false);
     setActiveNodeId(null);
@@ -292,6 +312,12 @@ export function ChatWorkspace({
             />
           </div>
           <div className={styles.composerArea}>
+            <ConversationInteractions
+              canRespond={!disabled}
+              onAnswer={(answer) => conversation.sendMessage(answer)}
+              pendingInput={conversation.pendingInput}
+              todos={conversation.todos}
+            />
             {modelAvailable === false ? (
               <p className={styles.error} role="status">
                 尚未配置可用模型。
@@ -318,22 +344,73 @@ export function ChatWorkspace({
                 连接中断，正在重连...
               </p>
             ) : null}
-            <form className={styles.composer} onSubmit={submit}>
-              <textarea
-                aria-label="消息"
-                disabled={
-                  modelAvailable === false ||
-                  conversation.terminal ||
-                  conversation.readOnly ||
-                  conversation.selecting
-                }
-                onChange={(event) =>
-                  conversation.updateMessage(event.target.value)
-                }
-                onKeyDown={submitWithKeyboard}
-                rows={2}
-                value={conversation.message}
-              />
+            <form className={styles.composer} onSubmit={(event) => void submit(event)}>
+              {attachments.uploads.length > 0 ? (
+                <div className={styles.attachmentQueue}>
+                  {attachments.uploads.map((upload) => (
+                    <div className={styles.attachmentUpload} key={upload.localId}>
+                      <span>
+                        <strong>{upload.file.name}</strong>
+                        <small>
+                          {upload.status === "UPLOADING"
+                            ? `上传中 ${upload.progress}%`
+                            : upload.status === "UPLOADED"
+                              ? "已上传"
+                              : upload.error}
+                        </small>
+                      </span>
+                      {upload.status === "FAILED" ? (
+                        <button
+                          onClick={() => attachments.retry(upload.localId)}
+                          type="button"
+                        >
+                          重试
+                        </button>
+                      ) : null}
+                      <button
+                        aria-label={`移除 ${upload.file.name}`}
+                        onClick={() => void attachments.remove(upload)}
+                        type="button"
+                      >
+                        <X aria-hidden="true" size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              <div className={styles.composerInput}>
+                <textarea
+                  aria-label="消息"
+                  disabled={
+                    modelAvailable === false ||
+                    conversation.terminal ||
+                    conversation.readOnly ||
+                    conversation.selecting
+                  }
+                  onChange={(event) =>
+                    conversation.updateMessage(event.target.value)
+                  }
+                  onKeyDown={submitWithKeyboard}
+                  placeholder={
+                    conversation.pendingInput ? "回答 Agent 的问题" : undefined
+                  }
+                  rows={2}
+                  value={conversation.message}
+                />
+                <label className={styles.attachmentButton} title="添加附件">
+                  <Paperclip aria-hidden="true" size={16} />
+                  <input
+                    accept=".png,.jpg,.jpeg,.webp,.pdf,image/png,image/jpeg,image/webp,application/pdf"
+                    disabled={disabled}
+                    multiple
+                    onChange={(event) => {
+                      if (event.target.files) attachments.addFiles(event.target.files);
+                      event.target.value = "";
+                    }}
+                    type="file"
+                  />
+                </label>
+              </div>
               {conversation.busy ? (
                 <button
                   aria-label="停止生成"
@@ -349,7 +426,12 @@ export function ChatWorkspace({
                 <button
                   aria-label="发送消息"
                   className={styles.sendButton}
-                  disabled={disabled || !conversation.message.trim()}
+                  disabled={
+                    disabled ||
+                    !attachments.ready ||
+                    (!conversation.message.trim() &&
+                      attachments.uploaded.length === 0)
+                  }
                   title="发送消息"
                   type="submit"
                 >

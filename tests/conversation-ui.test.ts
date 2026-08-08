@@ -11,6 +11,7 @@ import {
   type ConversationSummary,
 } from "@/app/components/chat/conversation-data-protocol";
 import { ConversationHistory } from "@/app/components/chat/conversation-history";
+import { ConversationInteractions } from "@/app/components/chat/conversation-interactions";
 import { ConversationSidebar } from "@/app/components/chat/conversation-sidebar";
 import { fromConversationHistoryMessage } from "@/app/components/chat/conversation-message-adapter";
 import { parsePublicConversationEvent } from "@/app/components/chat/protocol";
@@ -35,6 +36,7 @@ const historyMessage: ConversationHistoryMessage = {
   role: "USER",
   status: "COMPLETED",
   body: "用户问题",
+  attachments: [],
   createdAt: timestamp,
   updatedAt: timestamp,
 };
@@ -76,6 +78,7 @@ describe("conversation data protocol", () => {
         messages: { items: [historyMessage], nextCursor: null },
         lastEveCursor: 12,
         subagents: [verifiedSubagent()],
+        uiState: { todos: [], pendingInput: null },
       }),
     ).toMatchObject({
       conversation: { id: "conversation-1" },
@@ -212,6 +215,47 @@ describe("conversation presentation", () => {
     expect(html).toContain("主 Agent 委派");
     expect(html).toContain("查询发票规则");
     expect(html).toContain("researcher");
+  });
+
+  it("renders todo progress and interactive question choices", () => {
+    const html = renderToStaticMarkup(
+      createElement(ConversationInteractions, {
+        canRespond: true,
+        onAnswer: async () => true,
+        pendingInput: {
+          origin: "MAIN",
+          requests: [
+            {
+              requestId: "request-1",
+              prompt: "请选择核查范围",
+              display: "select",
+              allowFreeform: true,
+              options: [
+                {
+                  id: "all",
+                  label: "全部资料",
+                  description: "检查全部知识源",
+                  style: "primary",
+                },
+              ],
+            },
+          ],
+        },
+        todos: [
+          {
+            content: "读取知识库",
+            priority: "high",
+            status: "in_progress",
+          },
+        ],
+      }),
+    );
+
+    expect(html).toContain("任务进度");
+    expect(html).toContain("读取知识库");
+    expect(html).toContain("请选择核查范围");
+    expect(html).toContain("全部资料");
+    expect(html).toContain("自由回答");
   });
 });
 

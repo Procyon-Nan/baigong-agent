@@ -29,6 +29,8 @@ export default async function HomePage() {
           enableExecutionDetails={principal.role === "ADMIN"}
           contextWindowTokens={modelSettings.contextWindowTokens}
           modelAvailable={modelSettings.available}
+          supportsImageInput={modelSettings.supportsImageInput}
+          supportsNativePdfInput={modelSettings.supportsNativePdfInput}
         />
       </div>
     </ApplicationFrame>

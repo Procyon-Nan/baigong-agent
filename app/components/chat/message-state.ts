@@ -5,6 +5,16 @@ export type ChatMessage = {
   readonly complete: boolean;
   readonly createdAt: string;
   readonly sequence?: number;
+  readonly attachments?: readonly ChatAttachment[];
+};
+
+export type ChatAttachment = {
+  readonly id: string;
+  readonly displayName: string;
+  readonly mediaType: string;
+  readonly sizeBytes: number;
+  readonly previewUrl: string;
+  readonly downloadUrl: string;
 };
 
 export function applyAssistantDelta(

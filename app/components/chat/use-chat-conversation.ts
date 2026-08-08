@@ -10,7 +10,7 @@ import type { ConversationSnapshot } from "./conversation-data-protocol";
 import { useConversationState } from "./conversation-state";
 import { useConversationHistory } from "./use-conversation-history";
 import { useConversationStream } from "./use-conversation-stream";
-import type { ChatMessage } from "./message-state";
+import type { ChatAttachment, ChatMessage } from "./message-state";
 import {
   parseConversationMutationResult,
   type ConversationStatus,
@@ -31,6 +31,7 @@ export function useChatConversation(options: {
   const { dispatch, getState, state } = useConversationState();
   const cursor = useRef<number | null>(null);
   const lastSubmittedMessage = useRef("");
+  const lastSubmittedDisplay = useRef("");
   const failedSubmission = useRef<FailedSubmission | null>(null);
 
   function expireAuthentication(
@@ -46,9 +47,13 @@ export function useChatConversation(options: {
       expireAuthentication(event.data.error.message);
       return;
     }
-    if (event.type === "turn.failed") {
+    if (
+      event.type === "turn.failed" &&
+      getState().activeTurnId === event.data.turnId
+    ) {
       failedSubmission.current = {
         text: lastSubmittedMessage.current,
+        attachments: [],
         requestId: crypto.randomUUID(),
         appendUserMessage: false,
         retryOfTurnId: event.data.turnId,
@@ -57,7 +62,7 @@ export function useChatConversation(options: {
     dispatch({
       type: "public-event.received",
       event,
-      failedMessage: lastSubmittedMessage.current,
+      failedMessage: lastSubmittedDisplay.current,
     });
   }
 
@@ -73,9 +78,7 @@ export function useChatConversation(options: {
     },
     shouldReconnect() {
       const current = getState();
-      return (
-        current.busy && current.conversationId === state.conversationId
-      );
+      return current.busy && current.conversationId === state.conversationId;
     },
   });
 
@@ -88,13 +91,18 @@ export function useChatConversation(options: {
       stream.stop();
       cursor.current = snapshot.lastEveCursor;
       lastSubmittedMessage.current = activeInput;
+      lastSubmittedDisplay.current = activeInput || "附件消息";
       failedSubmission.current = null;
     },
   });
 
-  async function sendMessage(text: string): Promise<void> {
-    await submitMessage({
+  async function sendMessage(
+    text: string,
+    attachments: readonly ChatAttachment[] = [],
+  ): Promise<boolean> {
+    return submitMessage({
       text,
+      attachments,
       requestId: crypto.randomUUID(),
       appendUserMessage: true,
     });
@@ -105,24 +113,32 @@ export function useChatConversation(options: {
     if (submission) await submitMessage(submission);
   }
 
-  async function submitMessage(submission: FailedSubmission): Promise<void> {
+  async function submitMessage(submission: FailedSubmission): Promise<boolean> {
     const current = getState();
     const trimmed = submission.text.trim();
     if (
-      !trimmed ||
+      (!trimmed &&
+        submission.attachments.length === 0 &&
+        !submission.retryOfTurnId) ||
       current.busy ||
       isTerminal(current.status) ||
       isReadOnly(current.conversationContext, current.archivedAt) ||
       options.modelAvailable === false
     ) {
-      return;
+      return false;
     }
     const userMessage = submission.appendUserMessage
-      ? createOptimisticUserMessage(trimmed, current.messages)
+      ? createOptimisticUserMessage(
+          trimmed,
+          submission.attachments,
+          current.messages,
+        )
       : undefined;
     dispatch({ type: "submission.started", userMessage });
     failedSubmission.current = null;
     lastSubmittedMessage.current = trimmed;
+    lastSubmittedDisplay.current =
+      trimmed || submission.attachments[0]?.displayName || "附件消息";
 
     try {
       const creating = current.conversationId === null;
@@ -136,6 +152,7 @@ export function useChatConversation(options: {
           body: {
             message: trimmed,
             requestId: submission.requestId,
+            attachmentIds: submission.attachments.map(({ id }) => id),
             ...(submission.retryOfTurnId
               ? { retryOfTurnId: submission.retryOfTurnId }
               : {}),
@@ -152,23 +169,29 @@ export function useChatConversation(options: {
         type: "submission.accepted",
         mutation,
         creating,
-        title: trimmed.slice(0, 60),
+        title:
+          trimmed.slice(0, 60) ||
+          submission.attachments[0]?.displayName.slice(0, 60) ||
+          "新对话",
       });
+      return true;
     } catch (reason) {
       if (isConversationAuthenticationError(reason)) {
         expireAuthentication(chatClientErrorMessage(reason));
-        return;
+        return false;
       }
       failedSubmission.current = {
         text: trimmed,
+        attachments: submission.attachments,
         requestId: submission.requestId,
         appendUserMessage: false,
       };
       dispatch({
         type: "submission.failed",
         error: chatClientErrorMessage(reason),
-        failedMessage: trimmed,
+        failedMessage: lastSubmittedDisplay.current,
       });
+      return false;
     }
   }
 
@@ -203,6 +226,7 @@ export function useChatConversation(options: {
     stream.stop();
     cursor.current = null;
     lastSubmittedMessage.current = "";
+    lastSubmittedDisplay.current = "";
     failedSubmission.current = null;
     dispatch({ type: "reset" });
   }
@@ -230,6 +254,7 @@ export function useChatConversation(options: {
     loadingEarlier: state.loadingEarlier,
     message: state.message,
     messages: state.messages,
+    pendingInput: state.pendingInput,
     newConversation,
     readOnly,
     reconnecting: state.reconnecting,
@@ -240,6 +265,7 @@ export function useChatConversation(options: {
     sendMessage,
     status: state.status,
     subagents: state.subagents,
+    todos: state.todos,
     terminal: isTerminal(state.status),
     updateMessage,
   } as const;
@@ -247,6 +273,7 @@ export function useChatConversation(options: {
 
 type FailedSubmission = {
   readonly text: string;
+  readonly attachments: readonly ChatAttachment[];
   readonly requestId: string;
   readonly appendUserMessage: boolean;
   readonly retryOfTurnId?: string;
@@ -254,12 +281,14 @@ type FailedSubmission = {
 
 function createOptimisticUserMessage(
   text: string,
+  attachments: readonly ChatAttachment[],
   messages: readonly ChatMessage[],
 ): ChatMessage {
   return {
     id: crypto.randomUUID(),
     role: "user",
     text,
+    attachments,
     complete: true,
     createdAt: new Date().toISOString(),
     sequence: nextMessageSequence(messages),

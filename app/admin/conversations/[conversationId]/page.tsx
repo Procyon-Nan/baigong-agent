@@ -112,6 +112,33 @@ export default async function AdminConversationDetailPage({
                     </div>
                     <div className={styles.messageBody}>
                       <MarkdownContent markdown={message.body} />
+                      {message.attachments.length > 0 ? (
+                        <div className={styles.messageAttachments}>
+                          {message.attachments.map((attachment) => (
+                            <article
+                              className={styles.messageAttachment}
+                              key={attachment.id}
+                            >
+                              <div>
+                                <strong>{attachment.displayName}</strong>
+                                <small>
+                                  {attachment.mediaType} · {formatFileSize(attachment.sizeBytes)}
+                                </small>
+                              </div>
+                              <span>
+                                <a
+                                  href={attachment.previewUrl}
+                                  rel="noreferrer"
+                                  target="_blank"
+                                >
+                                  预览
+                                </a>
+                                <a href={attachment.downloadUrl}>下载</a>
+                              </span>
+                            </article>
+                          ))}
+                        </div>
+                      ) : null}
                     </div>
                   </li>
                 ))}
@@ -317,4 +344,10 @@ function statusLabel(status: string): string {
 
 function formatDate(value: string): string {
   return new Date(value).toLocaleString("zh-CN");
+}
+
+function formatFileSize(sizeBytes: number): string {
+  if (sizeBytes < 1_024) return `${sizeBytes} B`;
+  if (sizeBytes < 1_024 * 1_024) return `${(sizeBytes / 1_024).toFixed(1)} KiB`;
+  return `${(sizeBytes / (1_024 * 1_024)).toFixed(1)} MiB`;
 }

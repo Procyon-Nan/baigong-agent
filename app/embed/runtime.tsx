@@ -14,6 +14,8 @@ type RuntimeState =
       expiresAt: string;
       modelAvailable: boolean;
       contextWindowTokens: number | null;
+      supportsImageInput: boolean;
+      supportsNativePdfInput: boolean;
     }
   | { status: "failed" };
 
@@ -71,6 +73,8 @@ export function EmbedRuntime() {
           expiresAt: result.expiresAt,
           modelAvailable: model.available,
           contextWindowTokens: model.contextWindowTokens,
+          supportsImageInput: model.supportsImageInput,
+          supportsNativePdfInput: model.supportsNativePdfInput,
         });
         window.parent.postMessage(
           {
@@ -135,6 +139,8 @@ export function EmbedRuntime() {
         contextWindowTokens={state.contextWindowTokens}
         displayName={state.displayName}
         modelAvailable={state.modelAvailable}
+        supportsImageInput={state.supportsImageInput}
+        supportsNativePdfInput={state.supportsNativePdfInput}
         onAuthenticationExpired={() => {
           void terminateSession();
         }}
@@ -180,16 +186,25 @@ async function revokeToken(token: string, keepalive = false): Promise<void> {
 async function readModelSettings(token: string): Promise<{
   readonly available: boolean;
   readonly contextWindowTokens: number | null;
+  readonly supportsImageInput: boolean;
+  readonly supportsNativePdfInput: boolean;
 }> {
   const response = await fetch("/api/conversations/settings", {
     headers: { authorization: `Bearer ${token}` },
   });
   const payload = (await response.json()) as {
-    model?: { available?: unknown; contextWindowTokens?: unknown };
+    model?: {
+      available?: unknown;
+      contextWindowTokens?: unknown;
+      supportsImageInput?: unknown;
+      supportsNativePdfInput?: unknown;
+    };
   };
   if (
     !response.ok ||
     typeof payload.model?.available !== "boolean" ||
+    typeof payload.model.supportsImageInput !== "boolean" ||
+    typeof payload.model.supportsNativePdfInput !== "boolean" ||
     (payload.model.contextWindowTokens !== null &&
       (!Number.isSafeInteger(payload.model.contextWindowTokens) ||
         (payload.model.contextWindowTokens as number) <= 0))
@@ -199,6 +214,8 @@ async function readModelSettings(token: string): Promise<{
   return {
     available: payload.model.available,
     contextWindowTokens: payload.model.contextWindowTokens as number | null,
+    supportsImageInput: payload.model.supportsImageInput,
+    supportsNativePdfInput: payload.model.supportsNativePdfInput,
   };
 }
 

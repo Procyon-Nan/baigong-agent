@@ -342,7 +342,7 @@
   width: 100%;
   min-height: 62px;
   max-height: 180px;
-  padding: 10px 11px;
+  padding: 10px 11px 10px 42px;
   resize: vertical;
   border: 1px solid var(--border-strong);
   border-radius: 6px;
@@ -351,6 +351,99 @@
   font: inherit;
   font-size: 13px;
   line-height: 1.5;
+}
+
+.composerInput {
+  position: relative;
+  min-width: 0;
+}
+
+.attachmentButton {
+  position: absolute;
+  bottom: 10px;
+  left: 11px;
+  display: grid;
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+  place-items: center;
+  border-radius: 4px;
+  color: var(--text-muted);
+}
+
+.attachmentButton:hover {
+  background: var(--surface-subtle);
+  color: var(--accent);
+}
+
+.attachmentButton:has(input:disabled) {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.attachmentButton input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.attachmentQueue {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 6px;
+}
+
+.attachmentUpload {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 7px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+}
+
+.attachmentUpload > span {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 2px;
+}
+
+.attachmentUpload strong,
+.attachmentUpload small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachmentUpload strong {
+  font-size: 11px;
+}
+
+.attachmentUpload small {
+  color: var(--text-muted);
+  font-size: 9px;
+}
+
+.attachmentUpload button {
+  display: grid;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 7px;
+  place-items: center;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.attachmentUpload button:hover {
+  background: var(--surface-subtle);
+  color: var(--accent);
 }
 
 .composer textarea:disabled {
