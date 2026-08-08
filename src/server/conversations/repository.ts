@@ -1,8 +1,21 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
-import { and, count, desc, eq, inArray, lt, or } from "drizzle-orm";
+import {
+  and,
+  count,
+  desc,
+  eq,
+  inArray,
+  lt,
+  or,
+  sql,
+} from "drizzle-orm";
 import { writeSecurityAudit } from "@/src/server/audit/repository";
+import {
+  bindPendingAttachments,
+  listBoundMessageAttachments,
+} from "@/src/server/attachments/binding";
 import {
   isAdminPrincipal,
   type AuthenticatedPrincipal,
@@ -10,11 +23,13 @@ import {
 import { getDatabase, type Database } from "@/src/server/db/client";
 import {
   conversationMessages,
+  conversationDerivedProjectionStates,
   conversationTurns,
   conversations,
   userProfiles,
 } from "@/src/server/db/schema";
 import { lockCurrentModelConfigurationVersion } from "@/src/server/models/configuration";
+import { lockCurrentAgentConfigurationVersion } from "@/src/server/agents/service";
 import {
   conversationAuthenticationExpired,
   conversationBusy,
@@ -27,7 +42,10 @@ import {
 import { createConversationEventPersistence } from "./event-persistence";
 import { assertMainConversationQuota } from "./limits";
 import { userMessageBlockId } from "./message-identifiers";
-import { deriveConversationTitle } from "./message-title";
+import {
+  deriveAttachmentConversationTitle,
+  deriveConversationTitle,
+} from "./message-title";
 import { toPublicConversation } from "./public-conversation";
 import type { ConversationTransaction } from "./repository-types";
 import {
@@ -38,7 +56,7 @@ import {
 } from "./subagent-linking";
 import {
   MAIN_AGENT_ID,
-  MAX_ACTIVE_TURNS_PER_USER,
+  MAX_ACTIVE_MAIN_TURNS_PER_USER,
   type CancellationReservation,
   type PublicConversation,
   type ReservedConversationTurn,
@@ -71,7 +89,7 @@ export type ConversationRepository = ReturnType<
 
 export type ConversationEventRepository = Pick<
   ConversationRepository,
-  "applyEvent" | "getRuntimeConversationById"
+  "applyEvent" | "findSubagentProjection" | "getRuntimeConversationById"
 >;
 
 export type ConversationLifecycleRepository = ConversationEventRepository;
@@ -100,7 +118,9 @@ export type ConversationReconciliationRepository =
   ConversationEventRepository &
     Pick<
       ConversationRepository,
-      "expireUnconfirmedSubmission" | "listPendingConversationIds"
+      | "expireUnconfirmedSubmission"
+      | "getReconciliationStartIndex"
+      | "listPendingConversationIds"
     >;
 
 export type ConversationCancellationRepository =
@@ -137,7 +157,11 @@ export function createConversationRepository(
 
     reserveCreation(
       principal: AuthenticatedPrincipal,
-      input: { readonly message: string; readonly requestId: string },
+      input: {
+        readonly message: string;
+        readonly requestId: string;
+        readonly attachmentIds?: readonly string[];
+      },
     ): Promise<TurnReservation> {
       return database.transaction(async (transaction) => {
         await lockCurrentPrincipal(transaction, principal);
@@ -149,8 +173,12 @@ export function createConversationRepository(
         if (duplicate) return { kind: "duplicate", value: duplicate };
 
         await assertMainConversationQuota(transaction, principal);
-        await assertUserConcurrency(transaction, principal);
+        await assertMainAgentConcurrency(transaction, principal);
         const model = await lockCurrentModelConfigurationVersion(
+          transaction,
+          principal.tenantId,
+        );
+        const agent = await lockCurrentAgentConfigurationVersion(
           transaction,
           principal.tenantId,
         );
@@ -178,6 +206,7 @@ export function createConversationRepository(
           ownerUserId: principal.userId,
           requestId: input.requestId,
           modelConfigVersionId: model.id,
+          agentConfigVersionId: agent.configVersionId,
           inputMessageId,
           status: "SUBMITTING",
           createdAt: now,
@@ -196,9 +225,24 @@ export function createConversationRepository(
           createdAt: now,
           updatedAt: now,
         });
+        const attachments = await bindPendingAttachments(transaction, {
+          principal,
+          attachmentIds: input.attachmentIds ?? [],
+          conversationId,
+          messageId: inputMessageId,
+          model,
+          boundAt: now,
+        });
+        if (input.message.trim().length === 0) {
+          await transaction
+            .update(conversations)
+            .set({ title: deriveAttachmentConversationTitle(attachments) })
+            .where(eq(conversations.id, conversationId));
+        }
         return {
           kind: "reserved",
           message: input.message,
+          attachments,
           value: {
             conversationId,
             turnId,
@@ -206,6 +250,7 @@ export function createConversationRepository(
             ownerUserId: principal.userId,
             ownerSource: principal.source,
             modelConfigVersionId: model.id,
+            agentConfigVersionId: agent.configVersionId,
             eveTurnId: null,
             conversationStatus: "STARTING",
             turnStatus: "SUBMITTING",
@@ -226,6 +271,7 @@ export function createConversationRepository(
       input: {
         readonly message: string;
         readonly requestId: string;
+        readonly attachmentIds?: readonly string[];
         readonly retryOfTurnId?: string;
       },
     ): Promise<TurnReservation> {
@@ -269,8 +315,12 @@ export function createConversationRepository(
           throw conversationUnavailable();
         }
 
-        await assertUserConcurrency(transaction, principal);
+        await assertMainAgentConcurrency(transaction, principal);
         const model = await lockCurrentModelConfigurationVersion(
+          transaction,
+          principal.tenantId,
+        );
+        const agent = await lockCurrentAgentConfigurationVersion(
           transaction,
           principal.tenantId,
         );
@@ -298,6 +348,7 @@ export function createConversationRepository(
           ownerUserId: principal.userId,
           requestId: input.requestId,
           modelConfigVersionId: model.id,
+          agentConfigVersionId: agent.configVersionId,
           inputMessageId,
           retryOfTurnId: retryInput ? input.retryOfTurnId : null,
           status: "SUBMITTING",
@@ -319,6 +370,21 @@ export function createConversationRepository(
             updatedAt: now,
           });
         }
+        const attachments = retryInput
+          ? await listBoundMessageAttachments(transaction, {
+              principal,
+              conversationId,
+              messageId: inputMessageId,
+              model,
+            })
+          : await bindPendingAttachments(transaction, {
+              principal,
+              attachmentIds: input.attachmentIds ?? [],
+              conversationId,
+              messageId: inputMessageId,
+              model,
+              boundAt: now,
+            });
         const [updated] = await transaction
           .update(conversations)
           .set({
@@ -340,6 +406,7 @@ export function createConversationRepository(
         return {
           kind: "reserved",
           message,
+          attachments,
           value: {
             conversationId,
             turnId,
@@ -347,6 +414,7 @@ export function createConversationRepository(
             ownerUserId: principal.userId,
             ownerSource: conversation.ownerSource,
             modelConfigVersionId: model.id,
+            agentConfigVersionId: agent.configVersionId,
             eveTurnId: null,
             conversationStatus: "RUNNING",
             turnStatus: "SUBMITTING",
@@ -730,12 +798,12 @@ export function createConversationRepository(
 
     findSubagentProjection(
       parentConversationId: string,
-      delegationCallId: string,
+      childSessionId: string,
     ): Promise<SubagentPublicProjection | null> {
       return findSubagentPublicProjection(
         database,
         parentConversationId,
-        delegationCallId,
+        childSessionId,
       );
     },
 
@@ -760,13 +828,59 @@ export function createConversationRepository(
     },
 
     async listPendingConversationIds(limit: number): Promise<string[]> {
+      const projectionLag = sql<boolean>`
+        ${conversations.lastEveCursor} IS NOT NULL
+        AND (
+          ${conversationDerivedProjectionStates.conversationId} IS NULL
+          OR ${conversationDerivedProjectionStates.lastEveCursor} IS NULL
+          OR ${conversationDerivedProjectionStates.lastEveCursor} < ${conversations.lastEveCursor}
+        )
+      `;
       const rows = await database
         .select({ id: conversations.id })
         .from(conversations)
-        .where(inArray(conversations.status, BUSY_CONVERSATION_STATUSES))
-        .orderBy(conversations.updatedAt)
+        .leftJoin(
+          conversationDerivedProjectionStates,
+          eq(
+            conversationDerivedProjectionStates.conversationId,
+            conversations.id,
+          ),
+        )
+        .where(
+          or(
+            inArray(conversations.status, BUSY_CONVERSATION_STATUSES),
+            projectionLag,
+          ),
+        )
+        .orderBy(
+          sql`CASE WHEN ${projectionLag} THEN 0 ELSE 1 END`,
+          conversations.updatedAt,
+        )
         .limit(limit);
       return rows.map(({ id }) => id);
+    },
+
+    async getReconciliationStartIndex(conversationId: string): Promise<number> {
+      const [row] = await database
+        .select({
+          coreCursor: conversations.lastEveCursor,
+          derivedCursor: conversationDerivedProjectionStates.lastEveCursor,
+        })
+        .from(conversations)
+        .leftJoin(
+          conversationDerivedProjectionStates,
+          eq(
+            conversationDerivedProjectionStates.conversationId,
+            conversations.id,
+          ),
+        )
+        .where(eq(conversations.id, conversationId))
+        .limit(1);
+      if (!row) throw conversationNotFound();
+      return Math.min(
+        nextStreamIndex(row.coreCursor),
+        nextStreamIndex(row.derivedCursor),
+      );
     },
 
     expireUnconfirmedSubmission(
@@ -849,21 +963,30 @@ async function lockCurrentPrincipal(
   }
 }
 
-async function assertUserConcurrency(
+async function assertMainAgentConcurrency(
   transaction: ConversationTransaction,
   principal: AuthenticatedPrincipal,
 ): Promise<void> {
   const [active] = await transaction
     .select({ value: count() })
     .from(conversationTurns)
+    .innerJoin(
+      conversations,
+      and(
+        eq(conversations.id, conversationTurns.conversationId),
+        eq(conversations.tenantId, conversationTurns.tenantId),
+      ),
+    )
     .where(
       and(
         eq(conversationTurns.tenantId, principal.tenantId),
         eq(conversationTurns.ownerUserId, principal.userId),
+        eq(conversations.ownerSource, principal.source),
+        eq(conversations.kind, "MAIN"),
         inArray(conversationTurns.status, ACTIVE_TURN_STATUSES),
       ),
     );
-  if ((active?.value ?? 0) >= MAX_ACTIVE_TURNS_PER_USER) {
+  if ((active?.value ?? 0) >= MAX_ACTIVE_MAIN_TURNS_PER_USER) {
     throw userConcurrencyLimit();
   }
 }
@@ -1041,6 +1164,7 @@ function toReserved(
     ownerUserId: conversation.ownerUserId,
     ownerSource: conversation.ownerSource,
     modelConfigVersionId: turn.modelConfigVersionId,
+    agentConfigVersionId: turn.agentConfigVersionId,
     eveTurnId: turn.eveTurnId,
     conversationStatus: conversation.status,
     turnStatus: turn.status,

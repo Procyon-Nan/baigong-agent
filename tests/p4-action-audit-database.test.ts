@@ -4,10 +4,11 @@ import { randomUUID } from "node:crypto";
 
 import { and, eq } from "drizzle-orm";
 import type { HandleMessageStreamEvent } from "eve/client";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { getDatabase } from "@/src/server/db/client";
 import {
   conversationActionAudits,
+  conversationDerivedProjectionStates,
   conversationEventReceipts,
   conversations,
 } from "@/src/server/db/schema";
@@ -207,7 +208,7 @@ describe("P4 action audit persistence", () => {
     ).resolves.toEqual({ items: [], nextCursor: null });
   }, 30_000);
 
-  it("rolls back an unmatched action result without advancing the cursor", async () => {
+  it("records projection lag without rolling back core state for an unmatched result", async () => {
     const context = await testContext("action-mismatch");
     const { repository, reservation } = await prepareP4Conversation(
       context,
@@ -218,6 +219,7 @@ describe("P4 action audit persistence", () => {
       0,
       turnStartedEvent("mismatch-eve-turn"),
     );
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
     await expect(
       repository.applyEvent(
         reservation.conversationId,
@@ -233,13 +235,13 @@ describe("P4 action audit persistence", () => {
           },
         }),
       ),
-    ).rejects.toMatchObject({ code: "CONVERSATION_PERSISTENCE_FAILED" });
+    ).resolves.toBe(true);
 
     const [conversation] = await getDatabase()
       .select({ lastEveCursor: conversations.lastEveCursor })
       .from(conversations)
       .where(eq(conversations.id, reservation.conversationId));
-    expect(conversation?.lastEveCursor).toBe(0n);
+    expect(conversation?.lastEveCursor).toBe(1n);
     const receipts = await getDatabase()
       .select({ id: conversationEventReceipts.id })
       .from(conversationEventReceipts)
@@ -249,7 +251,210 @@ describe("P4 action audit persistence", () => {
           eq(conversationEventReceipts.eveCursor, 1n),
         ),
       );
-    expect(receipts).toHaveLength(0);
+    expect(receipts).toHaveLength(1);
+    const [projection] = await getDatabase()
+      .select()
+      .from(conversationDerivedProjectionStates)
+      .where(
+        eq(
+          conversationDerivedProjectionStates.conversationId,
+          reservation.conversationId,
+        ),
+      );
+    expect(projection).toMatchObject({
+      lastEveCursor: 0n,
+      failureCount: 1,
+      lastFailureCode: "CONVERSATION_PERSISTENCE_FAILED",
+    });
+    expect(error).toHaveBeenCalledTimes(1);
+    error.mockRestore();
+  }, 30_000);
+
+  it("allows providers to reuse a tool call id in later turns", async () => {
+    const context = await testContext("action-call-id-scope");
+    const { repository, reservation } = await prepareP4Conversation(
+      context,
+      "first turn",
+    );
+    const conversationId = reservation.conversationId;
+    const firstEveTurnId = "call-id-first-turn";
+
+    await repository.applyEvent(
+      conversationId,
+      0,
+      turnStartedEvent(firstEveTurnId),
+    );
+    await repository.applyEvent(
+      conversationId,
+      1,
+      singleToolRequestedEvent(firstEveTurnId, "call_0", "first_tool"),
+    );
+    await repository.applyEvent(
+      conversationId,
+      2,
+      actionResultEvent(firstEveTurnId, {
+        callId: "call_0",
+        status: "completed",
+        result: {
+          kind: "tool-result",
+          callId: "call_0",
+          toolName: "first_tool",
+          output: null,
+        },
+      }),
+    );
+    await repository.applyEvent(
+      conversationId,
+      3,
+      event("turn.completed", { turnId: firstEveTurnId, sequence: 1 }),
+    );
+    await repository.applyEvent(
+      conversationId,
+      4,
+      event("session.waiting", {
+        continuationToken: `continuation-${randomUUID()}`,
+        sequence: 1,
+      }),
+    );
+
+    const continuation = await repository.reserveContinuation(
+      context.administrator,
+      conversationId,
+      { message: "second turn", requestId: randomUUID() },
+    );
+    if (continuation.kind !== "reserved" || !continuation.value.eveSessionId) {
+      throw new Error("Expected a continuation reservation.");
+    }
+    await repository.acceptContinuation(
+      continuation.value,
+      continuation.value.eveSessionId,
+    );
+
+    const secondEveTurnId = "call-id-second-turn";
+    await repository.applyEvent(
+      conversationId,
+      5,
+      turnStartedEvent(secondEveTurnId),
+    );
+    await repository.applyEvent(
+      conversationId,
+      6,
+      singleToolRequestedEvent(secondEveTurnId, "call_0", "second_tool"),
+    );
+    await repository.applyEvent(
+      conversationId,
+      7,
+      actionResultEvent(secondEveTurnId, {
+        callId: "call_0",
+        status: "failed",
+        result: {
+          kind: "tool-result",
+          callId: "call_0",
+          toolName: "second_tool",
+          isError: true,
+          output: "expected failure",
+        },
+      }),
+    );
+
+    const actions = await getDatabase()
+      .select({
+        eveTurnId: conversationActionAudits.eveTurnId,
+        actionName: conversationActionAudits.actionName,
+        status: conversationActionAudits.status,
+      })
+      .from(conversationActionAudits)
+      .where(eq(conversationActionAudits.conversationId, conversationId));
+    expect(actions).toEqual(
+      expect.arrayContaining([
+        {
+          eveTurnId: firstEveTurnId,
+          actionName: "first_tool",
+          status: "COMPLETED",
+        },
+        {
+          eveTurnId: secondEveTurnId,
+          actionName: "second_tool",
+          status: "FAILED",
+        },
+      ]),
+    );
+    expect(actions).toHaveLength(2);
+  }, 30_000);
+
+  it("allows a completed call id to be reused in the same turn and step", async () => {
+    const context = await testContext("action-call-id-repeat");
+    const { repository, reservation } = await prepareP4Conversation(
+      context,
+      "repeated action",
+    );
+    const conversationId = reservation.conversationId;
+    const eveTurnId = "repeated-action-turn";
+
+    await repository.applyEvent(conversationId, 0, turnStartedEvent(eveTurnId));
+    await repository.applyEvent(
+      conversationId,
+      1,
+      singleToolRequestedEvent(eveTurnId, "call_0", "first_tool"),
+    );
+    await repository.applyEvent(
+      conversationId,
+      2,
+      actionResultEvent(eveTurnId, {
+        callId: "call_0",
+        status: "failed",
+        result: {
+          kind: "tool-result",
+          callId: "call_0",
+          toolName: "first_tool",
+          isError: true,
+          output: "first failure",
+        },
+      }),
+    );
+    await repository.applyEvent(
+      conversationId,
+      3,
+      singleToolRequestedEvent(eveTurnId, "call_0", "second_tool"),
+    );
+    await repository.applyEvent(
+      conversationId,
+      4,
+      actionResultEvent(eveTurnId, {
+        callId: "call_0",
+        status: "completed",
+        result: {
+          kind: "tool-result",
+          callId: "call_0",
+          toolName: "second_tool",
+          output: null,
+        },
+      }),
+    );
+
+    const actions = await getDatabase()
+      .select({
+        actionName: conversationActionAudits.actionName,
+        requestEveCursor: conversationActionAudits.requestEveCursor,
+        status: conversationActionAudits.status,
+      })
+      .from(conversationActionAudits)
+      .where(eq(conversationActionAudits.conversationId, conversationId));
+    expect(actions).toEqual(
+      expect.arrayContaining([
+        {
+          actionName: "first_tool",
+          requestEveCursor: 1n,
+          status: "FAILED",
+        },
+        {
+          actionName: "second_tool",
+          requestEveCursor: 3n,
+          status: "COMPLETED",
+        },
+      ]),
+    );
+    expect(actions).toHaveLength(2);
   }, 30_000);
 });
 
@@ -297,6 +502,26 @@ function actionsRequestedEvent(turnId: string): HandleMessageStreamEvent {
         nodeId: "remote/researcher",
         description: "sensitive remote delegation",
         input: { task: "sensitive remote task" },
+      },
+    ],
+  });
+}
+
+function singleToolRequestedEvent(
+  turnId: string,
+  callId: string,
+  toolName: string,
+): HandleMessageStreamEvent {
+  return event("actions.requested", {
+    turnId,
+    stepIndex: 0,
+    sequence: 1,
+    actions: [
+      {
+        kind: "tool-call",
+        callId,
+        toolName,
+        input: {},
       },
     ],
   });

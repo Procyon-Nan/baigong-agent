@@ -6,21 +6,34 @@ export const P3_MESSAGE_MAX_CHARACTERS = 32_000;
 
 const messageSchema = z
   .string()
-  .refine((value) => value.trim().length > 0)
-  .refine(
-    (value) => Array.from(value).length <= P3_MESSAGE_MAX_CHARACTERS,
-  );
+  .refine((value) => Array.from(value).length <= P3_MESSAGE_MAX_CHARACTERS);
 
-export const createConversationMessageSchema = z.strictObject({
+const attachmentIdsSchema = z.array(z.uuid()).max(5).default([]);
+
+const conversationMessageFields = {
   message: messageSchema,
   requestId: z.uuid(),
-});
+  attachmentIds: attachmentIdsSchema,
+} as const;
 
-export const submitConversationMessageSchema = z.strictObject({
-  message: messageSchema,
-  requestId: z.uuid(),
-  retryOfTurnId: z.uuid().optional(),
-});
+export const createConversationMessageSchema = z
+  .strictObject(conversationMessageFields)
+  .superRefine(requireMessageContent);
+
+export const submitConversationMessageSchema = z
+  .strictObject({
+    ...conversationMessageFields,
+    retryOfTurnId: z.uuid().optional(),
+  })
+  .superRefine((value, context) => {
+    requireMessageContent(value, context);
+    if (value.retryOfTurnId && value.attachmentIds.length > 0) {
+      context.addIssue({
+        code: "custom",
+        message: "Retry requests cannot bind new attachments.",
+      });
+    }
+  });
 
 export const cancelConversationTurnSchema = z.strictObject({
   turnId: z.uuid(),
@@ -55,6 +68,18 @@ export const conversationTitleSchema = z.strictObject({
 export type SubmitConversationMessageRequest = z.output<
   typeof submitConversationMessageSchema
 >;
+
+function requireMessageContent(
+  value: { readonly message: string; readonly attachmentIds: readonly string[] },
+  context: z.RefinementCtx,
+): void {
+  if (value.message.trim().length === 0 && value.attachmentIds.length === 0) {
+    context.addIssue({
+      code: "custom",
+      message: "A message or at least one attachment is required.",
+    });
+  }
+}
 
 export function parseConversationId(value: string): string {
   const parsed = conversationIdSchema.safeParse(value);

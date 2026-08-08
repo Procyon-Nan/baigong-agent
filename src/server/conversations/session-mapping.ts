@@ -14,6 +14,7 @@ const serviceSessionIdentitySchema = z.strictObject({
     conversationId: z.uuid(),
     turnId: z.uuid(),
     modelConfigVersionId: z.uuid(),
+    agentConfigVersionId: z.uuid(),
   }),
 });
 
@@ -35,6 +36,7 @@ export async function recoverConversationSessionMapping(
       .select({
         conversation: conversations,
         modelConfigVersionId: conversationTurns.modelConfigVersionId,
+        agentConfigVersionId: conversationTurns.agentConfigVersionId,
         turnOwnerUserId: conversationTurns.ownerUserId,
         turnStatus: conversationTurns.status,
       })
@@ -63,6 +65,7 @@ export async function recoverConversationSessionMapping(
       mapping.conversation.ownerSource !== identity.attributes.source ||
       mapping.conversation.activeTurnId !== identity.attributes.turnId ||
       mapping.modelConfigVersionId !== identity.attributes.modelConfigVersionId ||
+      mapping.agentConfigVersionId !== identity.attributes.agentConfigVersionId ||
       !isRecoverableMappingState(mapping, eveSessionId)
     ) {
       throw conversationPersistenceFailure();

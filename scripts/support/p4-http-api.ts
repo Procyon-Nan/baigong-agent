@@ -54,6 +54,8 @@ export function modelConfiguration(baseUrl: string) {
     baseUrl,
     modelName: FAKE_CHAT_MODELS.streaming,
     contextWindowTokens: 8_192,
+    supportsImageInput: false,
+    supportsNativePdfInput: false,
     apiKey: P4_FAKE_API_KEY,
   };
 }
@@ -201,6 +203,8 @@ export async function waitForConversation(
   conversationId: string,
 ): Promise<void> {
   const deadline = Date.now() + 30_000;
+  let lastStatus: string | undefined;
+  let lastEveCursor: number | null | undefined;
   while (Date.now() < deadline) {
     const result = await requestJson(
       origin,
@@ -210,13 +214,17 @@ export async function waitForConversation(
         authorization: authentication.authorization,
       },
     );
-    if (result.data.conversation?.status === "WAITING") return;
-    if (result.data.conversation?.status?.startsWith("TERMINAL_")) {
-      throw new Error(`P4 会话意外终止：${result.data.conversation.status}`);
+    lastStatus = result.data.conversation?.status;
+    lastEveCursor = result.data.lastEveCursor;
+    if (lastStatus === "WAITING") return;
+    if (lastStatus?.startsWith("TERMINAL_")) {
+      throw new Error(`P4 会话意外终止：${lastStatus}`);
     }
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
-  throw new Error("等待 P4 假模型回复完成超时。");
+  throw new Error(
+    `等待 P4 假模型回复完成超时（最终状态：${lastStatus ?? "unknown"}，最后 Eve 游标：${lastEveCursor ?? "none"}）。`,
+  );
 }
 
 export async function requestJson(

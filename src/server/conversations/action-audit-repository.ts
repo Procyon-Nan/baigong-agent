@@ -175,6 +175,7 @@ async function persistRequestedActions(
       .onConflictDoNothing({
         target: [
           conversationActionAudits.conversationId,
+          conversationActionAudits.requestEveCursor,
           conversationActionAudits.callId,
         ],
       })
@@ -193,6 +194,7 @@ async function persistRequestedActions(
       .where(
         and(
           eq(conversationActionAudits.conversationId, context.conversation.id),
+          eq(conversationActionAudits.requestEveCursor, context.cursor),
           eq(conversationActionAudits.callId, action.callId),
         ),
       )
@@ -227,16 +229,20 @@ async function persistActionResult(
     .where(
       and(
         eq(conversationActionAudits.conversationId, context.conversation.id),
+        eq(conversationActionAudits.eveTurnId, event.data.turnId),
+        eq(conversationActionAudits.stepIndex, event.data.stepIndex),
         eq(conversationActionAudits.callId, event.data.result.callId),
+        eq(conversationActionAudits.status, "PENDING"),
+        lt(conversationActionAudits.requestEveCursor, context.cursor),
       ),
     )
+    .orderBy(desc(conversationActionAudits.requestEveCursor))
     .limit(1);
   if (
     !action ||
     action.turnId !== turn.id ||
     action.eveTurnId !== event.data.turnId ||
     action.stepIndex !== event.data.stepIndex ||
-    action.status !== "PENDING" ||
     !resultMatchesAction(event, action.actionType, action.actionName)
   ) {
     throw conversationPersistenceFailure();

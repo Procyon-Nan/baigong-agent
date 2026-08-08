@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { getDatabase } from "@/src/server/db/client";
-import { conversations } from "@/src/server/db/schema";
+import { conversationTurns, conversations } from "@/src/server/db/schema";
 import {
   FAKE_CHAT_MODELS,
   startFakeChatCompletionsServer,
@@ -107,6 +107,12 @@ try {
   const localConversation = localSubmission.data.conversation;
   const localTurn = localSubmission.data.turn;
   assert(localConversation?.id && localTurn?.id, "本地会话响应缺少标识。");
+  const [localTurnRecord] = await getDatabase()
+    .select({ agentConfigVersionId: conversationTurns.agentConfigVersionId })
+    .from(conversationTurns)
+    .where(eq(conversationTurns.id, localTurn.id))
+    .limit(1);
+  assert(localTurnRecord, "本地会话缺少 Agent 能力版本。");
 
   const duplicate = await requestJson(origin, "/api/conversations", {
     method: "POST",
@@ -187,6 +193,7 @@ try {
     conversationId: localConversation.id,
     turnId: localTurn.id,
     modelConfigVersionId,
+    agentConfigVersionId: localTurnRecord.agentConfigVersionId,
   });
   const serviceOnAdminStream = await fetch(
     `${origin}/eve/v1/admin/stream?startIndex=0`,
@@ -410,6 +417,8 @@ function modelConfiguration(
     baseUrl,
     modelName,
     contextWindowTokens: 8_192,
+    supportsImageInput: false,
+    supportsNativePdfInput: false,
     apiKey: fakeApiKey,
   };
 }

@@ -4,6 +4,7 @@ import { and, eq, sql } from "drizzle-orm";
 import type { HandleMessageStreamEvent } from "eve/client";
 import {
   conversationEventReceipts,
+  conversationAttachments,
   conversationMessages,
   conversationStateEvents,
   conversationTurns,
@@ -82,11 +83,7 @@ async function persistMessageEvent(
       return;
     case "turn.completed":
     case "turn.failed":
-      await settleAssistantDrafts(
-        context,
-        context.event.data.turnId,
-        "HIDDEN",
-      );
+      await settleAssistantDrafts(context, context.event.data.turnId, "HIDDEN");
       return;
     case "session.completed":
     case "session.failed":
@@ -125,7 +122,25 @@ async function persistReceivedMessage(
         ),
       )
       .limit(1);
-    if (!message || message.body !== event.data.message) {
+    if (!message) {
+      throw conversationPersistenceFailure();
+    }
+    const attachments = await context.transaction
+      .select({
+        displayName: conversationAttachments.displayName,
+        mediaType: conversationAttachments.declaredMediaType,
+        sizeBytes: conversationAttachments.sizeBytes,
+      })
+      .from(conversationAttachments)
+      .where(
+        and(
+          eq(conversationAttachments.tenantId, context.conversation.tenantId),
+          eq(conversationAttachments.conversationId, context.conversation.id),
+          eq(conversationAttachments.messageId, message.id),
+          eq(conversationAttachments.status, "BOUND"),
+        ),
+      );
+    if (!receivedMessageMatchesReservation(message.body, attachments, event)) {
       throw conversationPersistenceFailure();
     }
     await context.transaction
@@ -175,6 +190,54 @@ async function persistReceivedMessage(
     )
     .returning({ id: conversationTurns.id });
   if (!updated) throw conversationPersistenceFailure();
+}
+
+function receivedMessageMatchesReservation(
+  message: string,
+  attachments: readonly {
+    readonly displayName: string;
+    readonly mediaType: string;
+    readonly sizeBytes: number;
+  }[],
+  event: Extract<HandleMessageStreamEvent, { type: "message.received" }>,
+): boolean {
+  if (attachments.length === 0) return event.data.message === message;
+  if (!event.data.parts) return false;
+
+  const textParts = event.data.parts.filter(
+    (
+      part,
+    ): part is Extract<(typeof event.data.parts)[number], { type: "text" }> =>
+      part.type === "text",
+  );
+  const expectedTextParts = message.trim().length > 0 ? [message] : [];
+  if (
+    textParts.length !== expectedTextParts.length ||
+    textParts.some((part, index) => part.text !== expectedTextParts[index])
+  ) {
+    return false;
+  }
+
+  const actualFiles = event.data.parts.filter(
+    (
+      part,
+    ): part is Extract<(typeof event.data.parts)[number], { type: "file" }> =>
+      part.type === "file",
+  );
+  if (actualFiles.length !== attachments.length) return false;
+
+  const unmatched = [...attachments];
+  for (const file of actualFiles) {
+    const index = unmatched.findIndex(
+      (attachment) =>
+        attachment.displayName === file.filename &&
+        attachment.mediaType === file.mediaType &&
+        (file.size === undefined || attachment.sizeBytes === file.size),
+    );
+    if (index === -1) return false;
+    unmatched.splice(index, 1);
+  }
+  return unmatched.length === 0;
 }
 
 async function persistAssistantMessage(
@@ -323,11 +386,11 @@ async function projectStateEvent(
       if (!turn) throw conversationPersistenceFailure();
       return {
         turnId: turn.id,
-        conversationStatus: context.conversation.status,
-        turnStatus:
-          context.conversation.status === "CANCELLING"
-            ? "CANCELLING"
-            : "RUNNING",
+        conversationStatus:
+          turn.id === context.conversation.activeTurnId
+            ? context.conversation.status
+            : null,
+        turnStatus: turn.status,
         publicErrorCode: null,
       };
     }
@@ -359,13 +422,26 @@ async function projectStateEvent(
         context.event.data.turnId,
         "CANCELLED",
       );
-    case "session.waiting":
+    case "session.waiting": {
+      const activeTurn = context.conversation.activeTurnId
+        ? await context.transaction
+            .select({ status: conversationTurns.status })
+            .from(conversationTurns)
+            .where(eq(conversationTurns.id, context.conversation.activeTurnId))
+            .limit(1)
+        : [];
+      const waitingSettledActiveTurn =
+        activeTurn[0] !== undefined &&
+        !["SUBMITTING", "RUNNING", "CANCELLING"].includes(activeTurn[0].status);
       return {
-        turnId: context.conversation.activeTurnId,
+        turnId: waitingSettledActiveTurn
+          ? context.conversation.activeTurnId
+          : null,
         conversationStatus: "WAITING",
         turnStatus: null,
         publicErrorCode: null,
       };
+    }
     case "session.failed":
       return {
         turnId: context.conversation.activeTurnId,

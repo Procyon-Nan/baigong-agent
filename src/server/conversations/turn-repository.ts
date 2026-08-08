@@ -11,6 +11,7 @@ export async function findConversationTurnByEveId(
     .select({
       id: conversationTurns.id,
       inputMessageId: conversationTurns.inputMessageId,
+      status: conversationTurns.status,
     })
     .from(conversationTurns)
     .where(

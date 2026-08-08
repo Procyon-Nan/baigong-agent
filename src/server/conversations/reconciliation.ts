@@ -33,10 +33,13 @@ export async function reconcileConversation(
       ? "submission_expired"
       : "mapping_pending";
   }
+  const startIndex = await repository.getReconciliationStartIndex(
+    conversationId,
+  );
 
   await monitorEveEvents({
     conversationId,
-    startIndex: runtime.nextStreamIndex,
+    startIndex,
     events: eve.streamSession({
       identity: serviceIdentity(
         {
@@ -48,10 +51,11 @@ export async function reconcileConversation(
         runtime,
       ),
       sessionId: runtime.eveSessionId,
-      startIndex: runtime.nextStreamIndex,
+      startIndex,
       follow: false,
     }),
     repository,
+    eve,
   });
   if (
     dependencies.expireUnconfirmedSubmission &&

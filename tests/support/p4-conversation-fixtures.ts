@@ -55,6 +55,8 @@ export async function configureP4Model(
     baseUrl: "http://127.0.0.1:41999/v1",
     modelName: `fake-${randomUUID()}`,
     contextWindowTokens,
+    supportsImageInput: false,
+    supportsNativePdfInput: false,
     apiKey: `fake-${randomUUID()}`,
   });
 }

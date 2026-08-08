@@ -1,3 +1,16 @@
+import type {
+  PublicInputRequest,
+  PublicInteractionOrigin,
+  PublicTodoItem,
+} from "@/src/shared/conversation-ui-state";
+
+export type {
+  PublicInputOption,
+  PublicInputRequest,
+  PublicInteractionOrigin,
+  PublicTodoItem,
+} from "@/src/shared/conversation-ui-state";
+
 export const PUBLIC_CONVERSATION_EVENT_TYPES = [
   "conversation.status",
   "turn.started",
@@ -8,6 +21,7 @@ export const PUBLIC_CONVERSATION_EVENT_TYPES = [
   "turn.failed",
   "subagent.created",
   "input.requested",
+  "todo.updated",
   "authorization.required",
   "authentication.expired",
   "heartbeat",
@@ -91,6 +105,9 @@ export type PublicConversationEvent =
         readonly requests: readonly PublicInputRequest[];
       };
     })
+  | (PublicEventBase<"todo.updated"> & {
+      readonly data: { readonly items: readonly PublicTodoItem[] };
+    })
   | (PublicEventBase<"authorization.required"> & {
       readonly data: {
         readonly origin: PublicInteractionOrigin;
@@ -110,23 +127,6 @@ export type PublicConversationEvent =
 export type PublicConversationError = {
   readonly code: PublicConversationErrorCode;
   readonly message: string;
-};
-
-export type PublicInteractionOrigin = "MAIN" | "SUBAGENT";
-
-export type PublicInputRequest = {
-  readonly requestId: string;
-  readonly prompt: string;
-  readonly display: "text" | "confirmation" | "select" | null;
-  readonly allowFreeform: boolean;
-  readonly options: readonly PublicInputOption[];
-};
-
-export type PublicInputOption = {
-  readonly id: string;
-  readonly label: string;
-  readonly description: string | null;
-  readonly style: "default" | "primary" | "danger" | null;
 };
 
 export type PublicAuthorizationChallenge = {

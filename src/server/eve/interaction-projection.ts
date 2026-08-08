@@ -1,9 +1,8 @@
-import { isInputRequest } from "eve/client";
+import { projectInputRequests } from "@/src/server/conversations/ui-state-projection";
 import type {
   EveEventProjectionContext,
   PublicAuthorizationChallenge,
   PublicConversationEvent,
-  PublicInputRequest,
 } from "./projection-types";
 
 export function projectSubagentCreated(
@@ -30,27 +29,9 @@ export function projectInputRequested(
   context: EveEventProjectionContext,
   at: string,
 ): PublicConversationEvent | null {
-  if (!context.interactionOrigin || !isRecord(event.data)) return null;
-  const rawRequests = event.data.requests;
-  if (!Array.isArray(rawRequests) || rawRequests.length === 0) return null;
-
-  const requests: PublicInputRequest[] = [];
-  for (const request of rawRequests) {
-    if (!isInputRequest(request)) return null;
-    requests.push({
-      requestId: request.requestId,
-      prompt: request.prompt,
-      display: request.display ?? null,
-      allowFreeform: request.allowFreeform ?? false,
-      options:
-        request.options?.map((option) => ({
-          id: option.id,
-          label: option.label,
-          description: option.description ?? null,
-          style: option.style ?? null,
-        })) ?? [],
-    });
-  }
+  if (!context.interactionOrigin) return null;
+  const requests = projectInputRequests(event);
+  if (!requests) return null;
 
   return {
     type: "input.requested",

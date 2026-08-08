@@ -4,9 +4,10 @@ import { randomUUID } from "node:crypto";
 
 import { and, eq } from "drizzle-orm";
 import type { HandleMessageStreamEvent } from "eve/client";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { getDatabase } from "@/src/server/db/client";
 import {
+  conversationDerivedProjectionStates,
   conversationMessages,
   conversations,
   conversationTurns,
@@ -255,6 +256,195 @@ describe("P4 subagent linking", () => {
     },
     30_000,
   );
+
+  it("settles a pending child immediately when the parent reports delegation failure", async () => {
+    const context = await testContext("subagent-parent-failure");
+    const prepared = await prepareSubagent(context, "researcher");
+
+    await prepared.repository.applyEvent(
+      prepared.parentConversationId,
+      3,
+      actionResultEvent(
+        prepared.parentEveTurnId,
+        prepared.callId,
+        prepared.name,
+        "failed",
+      ),
+    );
+
+    const [child] = await getDatabase()
+      .select()
+      .from(conversations)
+      .where(eq(conversations.id, prepared.childConversationId));
+    const [turn] = await getDatabase()
+      .select()
+      .from(conversationTurns)
+      .where(eq(conversationTurns.conversationId, prepared.childConversationId));
+    expect(child).toMatchObject({
+      linkStatus: "FAILED",
+      status: "TERMINAL_FAILED",
+      activeTurnId: null,
+      encryptedContinuationToken: null,
+    });
+    expect(turn).toMatchObject({
+      status: "FAILED",
+      publicErrorCode: "REQUEST_FAILED",
+    });
+  }, 30_000);
+
+  it("persists core lifecycle before a derived projection and replays projection lag", async () => {
+    const context = await testContext("derived-projection-replay");
+    const { repository, reservation } = await prepareP4Conversation(
+      context,
+      "projection replay",
+    );
+    const { createConversationEventPersistence } = await import(
+      "@/src/server/conversations/event-persistence"
+    );
+    let attempts = 0;
+    const persistence = createConversationEventPersistence(getDatabase(), {
+      persistDerived: async () => {
+        attempts += 1;
+        if (attempts === 1) throw new Error("injected derived failure");
+      },
+    });
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const started = turnStartedEvent(`turn-${randomUUID()}`);
+
+    await expect(
+      persistence.applyEvent(reservation.conversationId, 0, started),
+    ).resolves.toBe(true);
+    const [afterFailure] = await getDatabase()
+      .select()
+      .from(conversationDerivedProjectionStates)
+      .where(
+        eq(
+          conversationDerivedProjectionStates.conversationId,
+          reservation.conversationId,
+        ),
+      );
+    const [conversation] = await getDatabase()
+      .select()
+      .from(conversations)
+      .where(eq(conversations.id, reservation.conversationId));
+    expect(conversation.lastEveCursor).toBe(0n);
+    expect(afterFailure).toMatchObject({
+      lastEveCursor: null,
+      failureCount: 1,
+      lastFailureCode: "UNCLASSIFIED_ERROR",
+    });
+    await expect(
+      repository.getReconciliationStartIndex(reservation.conversationId),
+    ).resolves.toBe(0);
+    await expect(repository.listPendingConversationIds(50)).resolves.toContain(
+      reservation.conversationId,
+    );
+
+    await expect(
+      persistence.applyEvent(reservation.conversationId, 0, started),
+    ).resolves.toBe(false);
+    const [replayed] = await getDatabase()
+      .select()
+      .from(conversationDerivedProjectionStates)
+      .where(
+        eq(
+          conversationDerivedProjectionStates.conversationId,
+          reservation.conversationId,
+        ),
+      );
+    expect(replayed).toMatchObject({
+      lastEveCursor: 0n,
+      failureCount: 0,
+      lastFailureCode: null,
+    });
+    await expect(
+      repository.getReconciliationStartIndex(reservation.conversationId),
+    ).resolves.toBe(1);
+    expect(attempts).toBe(2);
+    expect(error).toHaveBeenCalledTimes(1);
+    error.mockRestore();
+  }, 30_000);
+
+  it("counts three main turns separately from six active subagents", async () => {
+    const context = await testContext("separate-concurrency");
+    const { repository, reservation } = await prepareP4Conversation(
+      context,
+      "delegate concurrently",
+    );
+    const parentEveTurnId = `parent-turn-${randomUUID()}`;
+    await repository.applyEvent(
+      reservation.conversationId,
+      0,
+      turnStartedEvent(parentEveTurnId),
+    );
+    const [parent] = await getDatabase()
+      .select({ eveSessionId: conversations.eveSessionId })
+      .from(conversations)
+      .where(eq(conversations.id, reservation.conversationId));
+    if (!parent?.eveSessionId) throw new Error("Expected a parent eve session.");
+
+    for (let index = 0; index < 7; index += 1) {
+      const callId = `call-${randomUUID()}`;
+      const name = `worker-${index + 1}`;
+      const childSessionId = `child-${randomUUID()}`;
+      await repository.applyEvent(
+        reservation.conversationId,
+        index * 2 + 1,
+        actionsRequestedEvent(parentEveTurnId, callId, name),
+      );
+      await repository.applyEvent(
+        reservation.conversationId,
+        index * 2 + 2,
+        event("subagent.called", {
+          callId,
+          childSessionId,
+          sessionId: parent.eveSessionId,
+          sequence: index + 1,
+          name,
+          toolName: name,
+          turnId: parentEveTurnId,
+          workflowId: "workflow-main",
+        }),
+      );
+    }
+
+    const children = await getDatabase()
+      .select({ status: conversations.status, linkStatus: conversations.linkStatus })
+      .from(conversations)
+      .where(eq(conversations.parentConversationId, reservation.conversationId));
+    expect(
+      children.filter(
+        (child) =>
+          child.linkStatus === "PENDING" && child.status === "STARTING",
+      ),
+    ).toHaveLength(6);
+    expect(
+      children.filter(
+        (child) =>
+          child.linkStatus === "FAILED" &&
+          child.status === "TERMINAL_FAILED",
+      ),
+    ).toHaveLength(1);
+
+    await expect(
+      repository.reserveCreation(context.administrator, {
+        message: "second main turn",
+        requestId: randomUUID(),
+      }),
+    ).resolves.toMatchObject({ kind: "reserved" });
+    await expect(
+      repository.reserveCreation(context.administrator, {
+        message: "third main turn",
+        requestId: randomUUID(),
+      }),
+    ).resolves.toMatchObject({ kind: "reserved" });
+    await expect(
+      repository.reserveCreation(context.administrator, {
+        message: "fourth main turn",
+        requestId: randomUUID(),
+      }),
+    ).rejects.toMatchObject({ code: "USER_CONCURRENCY_LIMIT" });
+  }, 30_000);
 });
 
 type PreparedSubagent = {
@@ -344,9 +534,9 @@ function validInvocation(input: PreparedSubagent) {
 }
 
 function childSessionStartedEvent(
-  input: PreparedSubagent,
+  _input: PreparedSubagent,
 ): HandleMessageStreamEvent {
-  return event("session.started", { invocation: validInvocation(input) });
+  return event("session.started", {});
 }
 
 function turnStartedEvent(turnId: string): HandleMessageStreamEvent {
@@ -388,6 +578,28 @@ function subagentCalledEvent(
     toolName: input.name,
     turnId: input.parentEveTurnId,
     workflowId: "workflow-main",
+  });
+}
+
+function actionResultEvent(
+  turnId: string,
+  callId: string,
+  name: string,
+  status: "failed" | "rejected",
+): HandleMessageStreamEvent {
+  return event("action.result", {
+    turnId,
+    stepIndex: 0,
+    sequence: 1,
+    status,
+    error: { code: "SUBAGENT_EXECUTION_FAILED", message: "failed" },
+    result: {
+      kind: "subagent-result",
+      callId,
+      subagentName: name,
+      isError: true,
+      output: "failed",
+    },
   });
 }
 

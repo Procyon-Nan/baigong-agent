@@ -28,6 +28,7 @@ const serviceClaims = {
   conversationId: "828e284a-3397-4663-bc4b-f6eddfae57d1",
   turnId: "10492458-213f-43d9-aa4e-f650eaa3f1f4",
   modelConfigVersionId: "7dd2c78f-1758-46a3-862a-753e845813c7",
+  agentConfigVersionId: "87777777-7777-4777-8777-777777777777",
 };
 const adminClaims = {
   administratorUserId: "admin-1",

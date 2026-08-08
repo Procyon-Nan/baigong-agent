@@ -11,6 +11,7 @@ const runtime: RuntimeConversation = {
   ownerSource: "LOCAL",
   role: "USER",
   modelConfigVersionId: "44444444-4444-4444-8444-444444444444",
+  agentConfigVersionId: "55555555-5555-4555-8555-555555555555",
   eveTurnId: null,
   conversationStatus: "STARTING",
   turnStatus: "SUBMITTING",
@@ -54,6 +55,7 @@ describe("conversation startup reconciliation", () => {
         ...runtime,
         eveSessionId: "eve-session",
       }),
+      getReconciliationStartIndex: vi.fn().mockResolvedValue(4),
       expireUnconfirmedSubmission,
       applyEvent,
     });
@@ -74,6 +76,9 @@ describe("conversation startup reconciliation", () => {
       }),
     ).resolves.toBe("submission_expired");
     expect(applyEvent).toHaveBeenCalledBefore(expireUnconfirmedSubmission);
+    expect(streamSession).toHaveBeenCalledWith(
+      expect.objectContaining({ startIndex: 4 }),
+    );
   });
 });
 
@@ -83,6 +88,8 @@ function reconciliationRepository(
   return {
     applyEvent: vi.fn().mockResolvedValue(true),
     expireUnconfirmedSubmission: vi.fn().mockResolvedValue(false),
+    findSubagentProjection: vi.fn().mockResolvedValue(null),
+    getReconciliationStartIndex: vi.fn().mockResolvedValue(0),
     getRuntimeConversationById: vi.fn().mockResolvedValue(null),
     listPendingConversationIds: vi.fn().mockResolvedValue([]),
     ...overrides,

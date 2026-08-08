@@ -2,20 +2,22 @@ import "server-only";
 
 import { randomUUID } from "node:crypto";
 
-import { and, eq } from "drizzle-orm";
+import { and, count, desc, eq, inArray } from "drizzle-orm";
 import type { HandleMessageStreamEvent } from "eve/client";
 import { writeSecurityAudit } from "@/src/server/audit/repository";
 import type { Database } from "@/src/server/db/client";
-import {
-  conversationActionAudits,
-  conversationTurns,
-  conversations,
-} from "@/src/server/db/schema";
+import { conversationTurns, conversations } from "@/src/server/db/schema";
 import { conversationPersistenceFailure } from "./errors";
 import type { ConversationEventPersistenceContext } from "./repository-types";
+import { MAX_ACTIVE_SUBAGENT_TURNS_PER_PARENT_TURN } from "./types";
 
 const DELEGATION_MESSAGE_MARKER = "\nCaller message:\n";
 const UNKNOWN_DELEGATION_MESSAGE = "主 Agent 已委派任务。";
+const ACTIVE_SUBAGENT_STATUSES = [
+  "STARTING",
+  "RUNNING",
+  "CANCELLING",
+] as const;
 
 type SubagentCalledEvent = Extract<
   HandleMessageStreamEvent,
@@ -47,6 +49,9 @@ export async function persistSubagentLinking(
         await verifyChildInvocation(context, context.event);
       }
       return;
+    case "action.result":
+      await settleFailedParentCall(context, context.event);
+      return;
     default:
       return;
   }
@@ -55,7 +60,7 @@ export async function persistSubagentLinking(
 export async function findSubagentPublicProjection(
   database: Pick<Database, "select">,
   parentConversationId: string,
-  delegationCallId: string,
+  childSessionId: string,
 ): Promise<SubagentPublicProjection | null> {
   const [child] = await database
     .select({
@@ -68,7 +73,7 @@ export async function findSubagentPublicProjection(
     .where(
       and(
         eq(conversations.parentConversationId, parentConversationId),
-        eq(conversations.delegationCallId, delegationCallId),
+        eq(conversations.eveSessionId, childSessionId),
         eq(conversations.kind, "SUBAGENT"),
       ),
     )
@@ -136,45 +141,27 @@ async function persistParentCall(
   context: ConversationEventPersistenceContext,
   event: SubagentCalledEvent,
 ): Promise<void> {
-  const [action] = await context.transaction
-    .select()
-    .from(conversationActionAudits)
-    .where(
-      and(
-        eq(
-          conversationActionAudits.conversationId,
-          context.conversation.id,
-        ),
-        eq(conversationActionAudits.callId, event.data.callId),
-      ),
-    )
-    .limit(1);
-  if (!action) throw conversationPersistenceFailure();
-  if (action.actionType === "REMOTE_AGENT") return;
-  if (action.actionType !== "SUBAGENT") {
-    throw conversationPersistenceFailure();
-  }
-
   const [parentTurn] = await context.transaction
     .select()
     .from(conversationTurns)
     .where(
       and(
-        eq(conversationTurns.id, action.turnId),
         eq(conversationTurns.conversationId, context.conversation.id),
+        eq(conversationTurns.eveTurnId, event.data.turnId),
       ),
     )
     .limit(1);
+  if (!parentTurn) throw conversationPersistenceFailure();
+
+  if (event.data.remote !== undefined) return;
+
   if (
     !parentTurn?.eveTurnId ||
     !context.conversation.eveSessionId ||
     event.data.callId.length === 0 ||
     event.data.childSessionId.length === 0 ||
-    event.data.remote !== undefined ||
     event.data.sessionId !== context.conversation.eveSessionId ||
     event.data.turnId !== parentTurn.eveTurnId ||
-    action.eveTurnId !== parentTurn.eveTurnId ||
-    action.actionName !== event.data.toolName ||
     !isValidSubagentName(event.data.toolName)
   ) {
     throw conversationPersistenceFailure();
@@ -186,7 +173,7 @@ async function persistParentCall(
     .where(
       and(
         eq(conversations.parentConversationId, context.conversation.id),
-        eq(conversations.delegationCallId, event.data.callId),
+        eq(conversations.eveSessionId, event.data.childSessionId),
       ),
     )
     .limit(1);
@@ -196,6 +183,7 @@ async function persistParentCall(
       existing.ownerUserId !== context.conversation.ownerUserId ||
       existing.ownerSource !== context.conversation.ownerSource ||
       existing.parentTurnId !== parentTurn.id ||
+      existing.delegationCallId !== event.data.callId ||
       existing.subagentName !== event.data.toolName ||
       existing.eveSessionId !== event.data.childSessionId
     ) {
@@ -204,6 +192,9 @@ async function persistParentCall(
     return;
   }
 
+  const activeCount = await countActiveSubagents(context, parentTurn.id);
+  const overLimit =
+    activeCount >= MAX_ACTIVE_SUBAGENT_TURNS_PER_PARENT_TURN;
   const childConversationId = randomUUID();
   const childTurnId = randomUUID();
   await context.transaction.insert(conversations).values({
@@ -217,12 +208,12 @@ async function persistParentCall(
     parentTurnId: parentTurn.id,
     delegationCallId: event.data.callId,
     subagentName: event.data.toolName,
-    linkStatus: "PENDING",
+    linkStatus: overLimit ? "FAILED" : "PENDING",
     parentCalledCursor: context.cursor,
     agentId: event.data.toolName,
     eveSessionId: event.data.childSessionId,
-    status: "STARTING",
-    activeTurnId: childTurnId,
+    status: overLimit ? "TERMINAL_FAILED" : "STARTING",
+    activeTurnId: overLimit ? null : childTurnId,
     nextMessageSequence: 0,
     createdAt: context.eventAt,
     updatedAt: context.eventAt,
@@ -234,10 +225,110 @@ async function persistParentCall(
     ownerUserId: context.conversation.ownerUserId,
     requestId: randomUUID(),
     modelConfigVersionId: parentTurn.modelConfigVersionId,
-    status: "SUBMITTING",
+    agentConfigVersionId: parentTurn.agentConfigVersionId,
+    status: overLimit ? "FAILED" : "SUBMITTING",
+    publicErrorCode: overLimit ? "REQUEST_FAILED" : null,
+    completedAt: overLimit ? context.eventAt : null,
     createdAt: context.eventAt,
     updatedAt: context.eventAt,
   });
+}
+
+async function countActiveSubagents(
+  context: ConversationEventPersistenceContext,
+  parentTurnId: string,
+): Promise<number> {
+  const [active] = await context.transaction
+    .select({ value: count() })
+    .from(conversations)
+    .where(
+      and(
+        eq(conversations.parentConversationId, context.conversation.id),
+        eq(conversations.parentTurnId, parentTurnId),
+        eq(conversations.kind, "SUBAGENT"),
+        inArray(conversations.status, ACTIVE_SUBAGENT_STATUSES),
+      ),
+    );
+  return active?.value ?? 0;
+}
+
+async function settleFailedParentCall(
+  context: ConversationEventPersistenceContext,
+  event: Extract<HandleMessageStreamEvent, { type: "action.result" }>,
+): Promise<void> {
+  if (
+    event.data.status === "completed" ||
+    event.data.result.kind !== "subagent-result"
+  ) {
+    return;
+  }
+  const [parentTurn] = await context.transaction
+    .select({ id: conversationTurns.id })
+    .from(conversationTurns)
+    .where(
+      and(
+        eq(conversationTurns.conversationId, context.conversation.id),
+        eq(conversationTurns.eveTurnId, event.data.turnId),
+      ),
+    )
+    .limit(1);
+  if (!parentTurn) throw conversationPersistenceFailure();
+
+  const [child] = await context.transaction
+    .select()
+    .from(conversations)
+    .where(
+      and(
+        eq(conversations.parentConversationId, context.conversation.id),
+        eq(conversations.parentTurnId, parentTurn.id),
+        eq(conversations.delegationCallId, event.data.result.callId),
+        eq(conversations.kind, "SUBAGENT"),
+        eq(conversations.linkStatus, "PENDING"),
+      ),
+    )
+    .orderBy(desc(conversations.parentCalledCursor))
+    .limit(1)
+    .for("update");
+  if (!child) return;
+  if (child.subagentName !== event.data.result.subagentName) {
+    throw conversationPersistenceFailure();
+  }
+
+  if (child.activeTurnId) {
+    await context.transaction
+      .update(conversationTurns)
+      .set({
+        status: "FAILED",
+        publicErrorCode: "REQUEST_FAILED",
+        completedAt: context.eventAt,
+        updatedAt: context.eventAt,
+      })
+      .where(
+        and(
+          eq(conversationTurns.id, child.activeTurnId),
+          inArray(conversationTurns.status, [
+            "SUBMITTING",
+            "RUNNING",
+            "CANCELLING",
+          ]),
+        ),
+      );
+  }
+  await context.transaction
+    .update(conversations)
+    .set({
+      linkStatus: "FAILED",
+      status: "TERMINAL_FAILED",
+      activeTurnId: null,
+      encryptedContinuationToken: null,
+      updatedAt: context.eventAt,
+    })
+    .where(
+      and(
+        eq(conversations.id, child.id),
+        eq(conversations.linkStatus, "PENDING"),
+      ),
+    );
 }
 
 async function verifyChildInvocation(
@@ -261,48 +352,33 @@ async function verifyChildInvocation(
         .where(eq(conversationTurns.id, child.parentTurnId))
         .limit(1)
     : [];
-  const [action] = child.parentConversationId && child.delegationCallId
-    ? await context.transaction
-        .select()
-        .from(conversationActionAudits)
-        .where(
-          and(
-            eq(
-              conversationActionAudits.conversationId,
-              child.parentConversationId,
-            ),
-            eq(conversationActionAudits.callId, child.delegationCallId),
-          ),
-        )
-        .limit(1)
-    : [];
-
-  const childModelConfigVersionId = await childModelVersion(
+  const childVersions = await childTurnVersions(
     context,
     child.activeTurnId,
   );
-  const valid =
-    invocation?.kind === "subagent" &&
+  const storedLinkValid =
     parent !== undefined &&
     parentTurn !== undefined &&
-    action !== undefined &&
     parent.id === child.parentConversationId &&
     parent.tenantId === child.tenantId &&
     parent.ownerUserId === child.ownerUserId &&
     parent.ownerSource === child.ownerSource &&
-    parent.eveSessionId === invocation.parentSessionId &&
     parentTurn.id === child.parentTurnId &&
     parentTurn.conversationId === parent.id &&
-    parentTurn.eveTurnId === invocation.parentTurnId &&
-    parentTurn.modelConfigVersionId === childModelConfigVersionId &&
-    action.turnId === parentTurn.id &&
-    action.actionType === "SUBAGENT" &&
-    action.actionName === child.subagentName &&
-    action.callId === invocation.parentCallId &&
-    child.delegationCallId === invocation.parentCallId &&
-    child.subagentName === invocation.name;
+    parentTurn.modelConfigVersionId === childVersions?.modelConfigVersionId &&
+    parentTurn.agentConfigVersionId === childVersions?.agentConfigVersionId &&
+    child.parentCalledCursor !== null &&
+    child.delegationCallId !== null &&
+    child.subagentName !== null;
+  const invocationValid =
+    invocation === undefined ||
+    (invocation.kind === "subagent" &&
+      parent?.eveSessionId === invocation.parentSessionId &&
+      parentTurn?.eveTurnId === invocation.parentTurnId &&
+      child.delegationCallId === invocation.parentCallId &&
+      child.subagentName === invocation.name);
 
-  if (!valid) {
+  if (!storedLinkValid || !invocationValid) {
     await failChildLink(context);
     return;
   }
@@ -326,13 +402,19 @@ async function verifyChildInvocation(
   if (!updated) throw conversationPersistenceFailure();
 }
 
-async function childModelVersion(
+async function childTurnVersions(
   context: ConversationEventPersistenceContext,
   activeTurnId: string | null,
-): Promise<string | null> {
+): Promise<{
+  readonly modelConfigVersionId: string;
+  readonly agentConfigVersionId: string;
+} | null> {
   if (!activeTurnId) return null;
   const [turn] = await context.transaction
-    .select({ modelConfigVersionId: conversationTurns.modelConfigVersionId })
+    .select({
+      modelConfigVersionId: conversationTurns.modelConfigVersionId,
+      agentConfigVersionId: conversationTurns.agentConfigVersionId,
+    })
     .from(conversationTurns)
     .where(
       and(
@@ -341,7 +423,7 @@ async function childModelVersion(
       ),
     )
     .limit(1);
-  return turn?.modelConfigVersionId ?? null;
+  return turn ?? null;
 }
 
 async function failChildLink(
@@ -370,15 +452,28 @@ async function failChildLink(
       updatedAt: context.eventAt,
     })
     .where(eq(conversations.id, child.id));
+}
+
+export async function persistSubagentSecurityAudit(
+  context: ConversationEventPersistenceContext,
+): Promise<void> {
+  if (
+    context.event.type !== "session.started" ||
+    context.conversation.kind !== "SUBAGENT" ||
+    context.conversation.linkStatus !== "FAILED" ||
+    context.conversation.childStartedCursor !== context.cursor
+  ) {
+    return;
+  }
   await writeSecurityAudit(context.transaction, {
-    tenantId: child.tenantId,
+    tenantId: context.conversation.tenantId,
     actorSource: "SYSTEM",
     action: "SUBAGENT_LINK_VERIFICATION_FAILED",
     targetType: "CONVERSATION",
-    targetId: child.id,
+    targetId: context.conversation.id,
     outcome: "FAILURE",
     metadata: {
-      parentConversationId: child.parentConversationId,
+      parentConversationId: context.conversation.parentConversationId,
       reason: "INVOCATION_MISMATCH",
     },
   });

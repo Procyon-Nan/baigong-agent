@@ -230,7 +230,7 @@ async function projectEvent(
     case "subagent.called": {
       const subagent = await repository.findSubagentProjection(
         conversationId,
-        event.data.callId,
+        event.data.childSessionId,
       );
       return projectEveEvent(event, {
         ...context,
@@ -247,6 +247,8 @@ async function projectEvent(
       if (!interactionOrigin) return null;
       return projectEveEvent(event, { ...context, interactionOrigin });
     }
+    case "action.result":
+      return projectEveEvent(event, context);
     default:
       return null;
   }

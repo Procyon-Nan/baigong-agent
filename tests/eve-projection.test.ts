@@ -218,6 +218,56 @@ describe("eve public event projection", () => {
     expect(JSON.stringify(projected)).not.toContain("secret-token");
   });
 
+  it("projects only the safe todo list from a completed todo result", () => {
+    const projected = projectEveEvent(
+      {
+        type: "action.result",
+        meta,
+        data: {
+          turnId: "turn-eve-internal",
+          stepIndex: 2,
+          sequence: 4,
+          status: "completed",
+          result: {
+            kind: "tool-result",
+            callId: "secret-call-id",
+            toolName: "todo",
+            output: {
+              counts: { total: 1, pending: 1 },
+              todos: [
+                {
+                  content: "核查知识库结果",
+                  priority: "high",
+                  status: "in_progress",
+                },
+              ],
+              internal: "secret-output",
+            },
+          },
+        },
+      },
+      context,
+    );
+
+    expect(projected).toEqual({
+      type: "todo.updated",
+      conversationId: "conversation-public",
+      cursor: 8,
+      at: meta.at,
+      data: {
+        items: [
+          {
+            content: "核查知识库结果",
+            priority: "high",
+            status: "in_progress",
+          },
+        ],
+      },
+    });
+    expect(JSON.stringify(projected)).not.toContain("secret-");
+    expect(JSON.stringify(projected)).not.toContain("counts");
+  });
+
   it("redacts raw eve failures and identifies the incomplete draft", () => {
     const projected = projectEveEvent(
       {

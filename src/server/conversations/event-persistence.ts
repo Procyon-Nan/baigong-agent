@@ -4,7 +4,12 @@ import { eq } from "drizzle-orm";
 import type { HandleMessageStreamEvent } from "eve/client";
 import { getDatabase, type Database } from "@/src/server/db/client";
 import { conversations } from "@/src/server/db/schema";
-import { persistConversationActionAudit } from "./action-audit-repository";
+import { operationalErrorMetadata } from "@/src/server/errors";
+import {
+  applyDerivedConversationEvent,
+  type DerivedEventPersistence,
+  recordDerivedProjectionFailure,
+} from "./derived-event-persistence";
 import { conversationNotFound, conversationPersistenceFailure } from "./errors";
 import {
   persistConversationHistoryEvent,
@@ -13,7 +18,6 @@ import {
 import { applyLifecycleEvent } from "./lifecycle-repository";
 import type { ConversationEventPersistenceContext } from "./repository-types";
 import { persistSubagentLinking } from "./subagent-linking";
-import { persistConversationStepUsage } from "./usage-repository";
 
 export type ConversationEventPersistence = ReturnType<
   typeof createConversationEventPersistence
@@ -21,6 +25,7 @@ export type ConversationEventPersistence = ReturnType<
 
 export function createConversationEventPersistence(
   database: Database = getDatabase(),
+  options: { readonly persistDerived?: DerivedEventPersistence } = {},
 ) {
   return {
     async applyEvent(
@@ -29,7 +34,8 @@ export function createConversationEventPersistence(
       event: HandleMessageStreamEvent,
     ): Promise<boolean> {
       const durableCursor = parseDurableCursor(cursor);
-      return database.transaction(async (transaction) => {
+      const eventAt = eventDate(event);
+      const coreApplied = await database.transaction(async (transaction) => {
         const [conversation] = await transaction
           .select()
           .from(conversations)
@@ -52,7 +58,6 @@ export function createConversationEventPersistence(
           throw conversationPersistenceFailure();
         }
 
-        const eventAt = eventDate(event);
         const receiptRecorded = await recordConversationEventReceipt(
           transaction,
           {
@@ -80,6 +85,47 @@ export function createConversationEventPersistence(
         if (!updated) throw conversationPersistenceFailure();
         return true;
       });
+      try {
+        await applyDerivedConversationEvent({
+          database,
+          conversationId,
+          cursor: durableCursor,
+          event,
+          eventAt,
+          persist: options.persistDerived,
+        });
+      } catch (error) {
+        console.error(
+          JSON.stringify({
+            level: "error",
+            event: "conversation_derived_projection_failed",
+            conversationId,
+            eveCursor: cursor,
+            eveEventType: event.type,
+            ...operationalErrorMetadata(error),
+          }),
+        );
+        try {
+          await recordDerivedProjectionFailure({
+            database,
+            conversationId,
+            error,
+            failedAt: eventAt,
+          });
+        } catch (recordingError) {
+          console.error(
+            JSON.stringify({
+              level: "error",
+              event: "conversation_derived_projection_failure_record_failed",
+              conversationId,
+              eveCursor: cursor,
+              eveEventType: event.type,
+              ...operationalErrorMetadata(recordingError),
+            }),
+          );
+        }
+      }
+      return coreApplied;
     },
   };
 }
@@ -94,8 +140,6 @@ async function persistConversationEventChanges(
     context.eventAt,
   );
   await persistConversationHistoryEvent(context);
-  await persistConversationStepUsage(context);
-  await persistConversationActionAudit(context);
   await persistSubagentLinking(context);
 }
 

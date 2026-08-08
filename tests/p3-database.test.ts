@@ -63,6 +63,8 @@ describe("P3 database acceptance", () => {
       baseUrl: `http://127.0.0.1:${41_000 + index}/v1`,
       modelName: `fake-model-${index}`,
       contextWindowTokens: 8_192 + index,
+      supportsImageInput: false,
+      supportsNativePdfInput: false,
       apiKey: `p3-fake-key-${context.suffix}-${index}`,
     }));
 
@@ -534,6 +536,8 @@ async function configureModel(
     baseUrl: "http://127.0.0.1:41999/v1",
     modelName,
     contextWindowTokens: 8_192,
+    supportsImageInput: false,
+    supportsNativePdfInput: false,
     apiKey: `fake-${randomUUID()}`,
   });
 }
@@ -552,6 +556,7 @@ function serviceSessionIdentity(
       conversationId: reservation.conversationId,
       turnId: reservation.turnId,
       modelConfigVersionId: reservation.modelConfigVersionId,
+      agentConfigVersionId: reservation.agentConfigVersionId,
     },
   };
 }

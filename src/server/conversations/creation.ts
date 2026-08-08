@@ -2,6 +2,7 @@ import "server-only";
 
 import type { AuthenticatedPrincipal } from "@/src/server/auth/principal";
 import { EveGatewayRejectedError, createEveGateway } from "@/src/server/eve/client";
+import { buildEveUserContent } from "@/src/server/eve/user-content";
 import { encryptContinuationToken } from "@/src/server/models/credentials";
 import { eveRequestRejected } from "./errors";
 import { monitorEveEvents } from "./lifecycle";
@@ -9,15 +10,19 @@ import {
   createConversationRepository,
   type ConversationCreationRepository,
 } from "./repository";
+import { serviceIdentity } from "./service-identity";
 import type {
   ConversationSubmission,
   EveGateway,
-  EveServiceIdentity,
 } from "./types";
 
 export async function createConversation(
   principal: AuthenticatedPrincipal,
-  input: { readonly message: string; readonly requestId: string },
+  input: {
+    readonly message: string;
+    readonly requestId: string;
+    readonly attachmentIds?: readonly string[];
+  },
   dependencies: {
     readonly repository?: ConversationCreationRepository;
     readonly eve?: EveGateway;
@@ -44,11 +49,21 @@ export async function createConversation(
   }
 
   const identity = serviceIdentity(principal, reservation.value);
+  let message;
+  try {
+    message = await buildEveUserContent(
+      reservation.message,
+      reservation.attachments ?? [],
+    );
+  } catch (error) {
+    await repository.rejectSubmission(reservation.value);
+    throw error;
+  }
   let accepted;
   try {
     accepted = await eve.startTurn({
       identity,
-      message: reservation.message,
+      message,
     });
   } catch (error) {
     if (error instanceof EveGatewayRejectedError) {
@@ -88,28 +103,9 @@ export async function createConversation(
         startIndex: 0,
         events: accepted.events,
         repository,
+        eve,
       }),
   };
 }
 
-export function serviceIdentity(
-  principal: Pick<
-    AuthenticatedPrincipal,
-    "userId" | "tenantId" | "role" | "source"
-  >,
-  turn: {
-    readonly conversationId: string;
-    readonly turnId: string;
-    readonly modelConfigVersionId: string;
-  },
-): EveServiceIdentity {
-  return {
-    userId: principal.userId,
-    tenantId: principal.tenantId,
-    role: principal.role,
-    source: principal.source,
-    conversationId: turn.conversationId,
-    turnId: turn.turnId,
-    modelConfigVersionId: turn.modelConfigVersionId,
-  };
-}
+export { serviceIdentity } from "./service-identity";

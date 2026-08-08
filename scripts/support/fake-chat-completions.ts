@@ -7,6 +7,7 @@ const MAX_REQUEST_BYTES = 1_000_000;
 export const FAKE_CHAT_MODELS = {
   success: "p3-fake-success",
   streaming: "p3-fake-stream",
+  attachmentTools: "p5-fake-attachment-tools",
   partialFailure: "p3-fake-partial-failure",
   retry: "p3-fake-retry",
   timeout: "p3-fake-timeout",
@@ -16,17 +17,35 @@ export const FAKE_CHAT_MODELS = {
 export type FakeChatCompletionsServer = {
   readonly baseUrl: string;
   readonly requests: ReadonlyMap<string, number>;
+  readonly observations: ReadonlyMap<
+    string,
+    readonly FakeChatRequestObservation[]
+  >;
   close(): Promise<void>;
+};
+
+export type FakeChatRequestObservation = {
+  readonly stream: boolean;
+  readonly hasImageDataUrl: boolean;
+  readonly hasPdfDataUrl: boolean;
+  readonly toolRoleContainsDataUrl: boolean;
 };
 
 export async function startFakeChatCompletionsServer(options: {
   readonly apiKey?: string;
 } = {}): Promise<FakeChatCompletionsServer> {
   const requests = new Map<string, number>();
+  const observations = new Map<string, FakeChatRequestObservation[]>();
   const sockets = new Set<import("node:net").Socket>();
   const server = createServer(async (request, response) => {
     try {
-      await handleRequest(request, response, requests, options.apiKey);
+      await handleRequest(
+        request,
+        response,
+        requests,
+        observations,
+        options.apiKey,
+      );
     } catch (error) {
       if (!response.headersSent) {
         writeJson(response, 500, {
@@ -51,6 +70,7 @@ export async function startFakeChatCompletionsServer(options: {
   return {
     baseUrl: `http://127.0.0.1:${address.port}/v1`,
     requests,
+    observations,
     async close() {
       const closed = once(server, "close");
       server.close();
@@ -64,6 +84,7 @@ async function handleRequest(
   request: IncomingMessage,
   response: ServerResponse,
   requests: Map<string, number>,
+  observations: Map<string, FakeChatRequestObservation[]>,
   apiKey: string | undefined,
 ): Promise<void> {
   const url = new URL(request.url ?? "/", "http://127.0.0.1");
@@ -87,6 +108,9 @@ async function handleRequest(
   const model = typeof body.model === "string" ? body.model : "";
   const requestCount = (requests.get(model) ?? 0) + 1;
   requests.set(model, requestCount);
+  const modelObservations = observations.get(model) ?? [];
+  modelObservations.push(observeRequest(body));
+  observations.set(model, modelObservations);
 
   if (model === FAKE_CHAT_MODELS.error) {
     writeJson(response, 400, {
@@ -113,6 +137,11 @@ async function handleRequest(
     return;
   }
 
+  if (model === FAKE_CHAT_MODELS.attachmentTools) {
+    writeAttachmentToolResponse(response, body, requestCount);
+    return;
+  }
+
   const stream = body.stream === true;
   if (!stream) {
     writeJson(response, 200, completion(model, "P3 fake response"));
@@ -132,6 +161,148 @@ async function handleRequest(
   writeChunk(response, model, "response", null);
   writeChunk(response, model, "", "stop");
   response.end("data: [DONE]\n\n");
+}
+
+function observeRequest(
+  body: Readonly<Record<string, unknown>>,
+): FakeChatRequestObservation {
+  const messages = Array.isArray(body.messages) ? body.messages : [];
+  const serializedMessages = JSON.stringify(messages);
+  const toolMessages = JSON.stringify(
+    messages.filter(
+      (message) =>
+        isRecord(message) && message.role === "tool",
+    ),
+  );
+  return {
+    stream: body.stream === true,
+    hasImageDataUrl: serializedMessages.includes("data:image/"),
+    hasPdfDataUrl: serializedMessages.includes("data:application/pdf"),
+    toolRoleContainsDataUrl:
+      toolMessages.includes("data:image/") ||
+      toolMessages.includes("data:application/pdf"),
+  };
+}
+
+function writeAttachmentToolResponse(
+  response: ServerResponse,
+  body: Readonly<Record<string, unknown>>,
+  requestCount: number,
+): void {
+  if (requestCount === 1) {
+    writeToolCall(
+      response,
+      FAKE_CHAT_MODELS.attachmentTools,
+      "call-list-attachments",
+      "list_conversation_attachments",
+      {},
+    );
+    return;
+  }
+  if (requestCount === 2) {
+    const attachmentId = findAttachmentId(body.messages);
+    if (!attachmentId) {
+      writeJson(response, 400, {
+        error: {
+          type: "invalid_request_error",
+          message: "The attachment list did not contain an attachment id.",
+        },
+      });
+      return;
+    }
+    writeToolCall(
+      response,
+      FAKE_CHAT_MODELS.attachmentTools,
+      "call-read-attachment",
+      "read_conversation_attachment",
+      { attachmentId },
+    );
+    return;
+  }
+  if (requestCount === 3) {
+    writeStreamingText(
+      response,
+      FAKE_CHAT_MODELS.attachmentTools,
+      "P5 attachment tool response",
+    );
+    return;
+  }
+  writeJson(response, 400, {
+    error: {
+      type: "invalid_request_error",
+      message: "Unexpected extra attachment tool model step.",
+    },
+  });
+}
+
+function findAttachmentId(messages: unknown): string | null {
+  const match = JSON.stringify(messages ?? null).match(
+    /[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i,
+  );
+  return match?.[0] ?? null;
+}
+
+function writeToolCall(
+  response: ServerResponse,
+  model: string,
+  callId: string,
+  toolName: string,
+  input: Readonly<Record<string, unknown>>,
+): void {
+  startEventStream(response);
+  response.write(
+    `data: ${JSON.stringify({
+      id: "chatcmpl-p5-fake-tool",
+      object: "chat.completion.chunk",
+      created: 1_785_376_800,
+      model,
+      choices: [
+        {
+          index: 0,
+          delta: {
+            role: "assistant",
+            tool_calls: [
+              {
+                index: 0,
+                id: callId,
+                type: "function",
+                function: {
+                  name: toolName,
+                  arguments: JSON.stringify(input),
+                },
+              },
+            ],
+          },
+          finish_reason: null,
+        },
+      ],
+    })}\n\n`,
+  );
+  writeChunk(response, model, "", "tool_calls");
+  response.end("data: [DONE]\n\n");
+}
+
+function writeStreamingText(
+  response: ServerResponse,
+  model: string,
+  content: string,
+): void {
+  startEventStream(response);
+  writeChunk(response, model, content, null);
+  writeChunk(response, model, "", "stop");
+  response.end("data: [DONE]\n\n");
+}
+
+function startEventStream(response: ServerResponse): void {
+  response.writeHead(200, {
+    "cache-control": "no-store",
+    connection: "keep-alive",
+    "content-type": "text/event-stream; charset=utf-8",
+  });
+}
+
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 async function readJsonBody(
@@ -173,7 +344,7 @@ function writeChunk(
   response: ServerResponse,
   model: string,
   content: string,
-  finishReason: "stop" | null,
+  finishReason: "stop" | "tool_calls" | null,
 ): void {
   response.write(
     `data: ${JSON.stringify({

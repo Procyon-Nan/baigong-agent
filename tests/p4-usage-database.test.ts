@@ -91,7 +91,7 @@ describe("P4 usage persistence", () => {
     await repository.applyEvent(
       conversationId,
       2,
-      stepCompletedEvent("root-eve-turn", 1, {
+      stepCompletedEvent("root-eve-turn", 0, {
         inputTokens: 120,
         outputTokens: 30,
         cacheReadTokens: 20,
@@ -240,7 +240,10 @@ describe("P4 usage persistence", () => {
 
 type SubagentParent = Pick<
   ReservedConversationTurn,
-  "conversationId" | "turnId" | "modelConfigVersionId"
+  | "conversationId"
+  | "turnId"
+  | "modelConfigVersionId"
+  | "agentConfigVersionId"
 >;
 
 async function testContext(label: string): Promise<P4TestContext> {
@@ -291,6 +294,7 @@ async function insertSubagent(
       requestId: randomUUID(),
       eveTurnId,
       modelConfigVersionId: parent.modelConfigVersionId,
+      agentConfigVersionId: parent.agentConfigVersionId,
       status: "COMPLETED",
       startedAt: now,
       completedAt: now,
@@ -305,6 +309,7 @@ async function insertSubagent(
       conversationId,
       turnId,
       modelConfigVersionId: parent.modelConfigVersionId,
+      agentConfigVersionId: parent.agentConfigVersionId,
     },
   };
 }

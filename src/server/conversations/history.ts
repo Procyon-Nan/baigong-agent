@@ -1,9 +1,11 @@
 import "server-only";
 
-import { and, asc, desc, eq, gt, lt, ne, or } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, lt, ne, or } from "drizzle-orm";
 import { getDatabase, type Database } from "@/src/server/db/client";
+import type { PublicConversationUiState } from "@/src/shared/conversation-ui-state";
 import {
   conversations,
+  conversationAttachments,
   conversationMessages,
   type ConversationKind,
   type ConversationLinkStatus,
@@ -31,6 +33,7 @@ import {
   toPublicConversation,
 } from "./public-conversation";
 import type { PublicConversation } from "./types";
+import { readConversationUiState } from "./ui-state-repository";
 import {
   createConversationUsageRepository,
   type ConversationUsageSummary,
@@ -47,9 +50,19 @@ export type ConversationHistoryMessage = {
   readonly status: Exclude<ConversationMessageStatus, "HIDDEN">;
   readonly blockId: string;
   readonly body: string;
+  readonly attachments: readonly ConversationHistoryAttachment[];
   readonly stepIndex: number | null;
   readonly createdAt: string;
   readonly updatedAt: string;
+};
+
+export type ConversationHistoryAttachment = {
+  readonly id: string;
+  readonly displayName: string;
+  readonly mediaType: string;
+  readonly sizeBytes: number;
+  readonly previewUrl: string;
+  readonly downloadUrl: string;
 };
 
 export type ConversationHistoryPage = {
@@ -83,6 +96,7 @@ export type ConversationSnapshot = {
   readonly lastEveCursor: number | null;
   readonly tokenUsage: ConversationUsageSummary | null;
   readonly subagents: readonly ConversationSubagentSummary[];
+  readonly uiState: PublicConversationUiState;
 };
 
 export type ConversationSubagentSummary = {
@@ -111,13 +125,18 @@ export function createConversationHistoryRepository(
       const activeTurn = conversation.activeTurnId
         ? await readActiveTurn(database, conversation.activeTurnId)
         : undefined;
-      const [messages, tokenUsage, subagents] = await Promise.all([
+      const [messages, tokenUsage, subagents, uiState] = await Promise.all([
         listHistoryPage(database, conversation.id, before),
         createConversationUsageRepository(database).getSummary(
           principal.tenantId,
           conversation.id,
         ),
         listVisibleSubagents(database, principal.tenantId, conversation.id),
+        readConversationUiState(
+          database,
+          principal.tenantId,
+          conversation.id,
+        ),
       ]);
       return {
         conversation: toPublicConversation(conversation, activeTurn),
@@ -132,6 +151,7 @@ export function createConversationHistoryRepository(
         lastEveCursor: safeCursorNumber(conversation.lastEveCursor),
         tokenUsage,
         subagents,
+        uiState,
       };
     },
 
@@ -285,8 +305,17 @@ async function listHistoryPage(
     ? rows.slice(0, CONVERSATION_HISTORY_PAGE_SIZE)
     : rows;
   const last = pageRows.at(-1);
+  const attachments = await listHistoryAttachments(
+    database,
+    conversationId,
+    pageRows.map(({ id }) => id),
+  );
   return {
-    items: pageRows.reverse().map(toHistoryMessage),
+    items: pageRows
+      .reverse()
+      .map((message) =>
+        toHistoryMessage(message, attachments.get(message.id) ?? []),
+      ),
     nextCursor:
       hasMore && last
         ? encodeConversationHistoryCursor({
@@ -360,6 +389,7 @@ function nodesAfterCursor(cursor: ConversationNodeCursor) {
 
 function toHistoryMessage(
   message: typeof conversationMessages.$inferSelect,
+  attachments: readonly ConversationHistoryAttachment[],
 ): ConversationHistoryMessage {
   if (message.status === "HIDDEN") throw conversationPersistenceFailure();
   return {
@@ -370,10 +400,52 @@ function toHistoryMessage(
     status: message.status,
     blockId: message.blockId,
     body: message.body,
+    attachments,
     stepIndex: message.stepIndex,
     createdAt: message.createdAt.toISOString(),
     updatedAt: message.updatedAt.toISOString(),
   };
+}
+
+async function listHistoryAttachments(
+  database: Pick<Database, "select">,
+  conversationId: string,
+  messageIds: readonly string[],
+): Promise<ReadonlyMap<string, readonly ConversationHistoryAttachment[]>> {
+  if (messageIds.length === 0) return new Map();
+  const rows = await database
+    .select({
+      id: conversationAttachments.id,
+      messageId: conversationAttachments.messageId,
+      displayName: conversationAttachments.displayName,
+      mediaType: conversationAttachments.declaredMediaType,
+      sizeBytes: conversationAttachments.sizeBytes,
+    })
+    .from(conversationAttachments)
+    .where(
+      and(
+        eq(conversationAttachments.conversationId, conversationId),
+        eq(conversationAttachments.status, "BOUND"),
+        inArray(conversationAttachments.messageId, messageIds),
+      ),
+    )
+    .orderBy(conversationAttachments.createdAt, conversationAttachments.id);
+  const grouped = new Map<string, ConversationHistoryAttachment[]>();
+  for (const row of rows) {
+    if (!row.messageId) throw conversationPersistenceFailure();
+    const attachment = {
+      id: row.id,
+      displayName: row.displayName,
+      mediaType: row.mediaType,
+      sizeBytes: row.sizeBytes,
+      previewUrl: `/api/attachments/${row.id}`,
+      downloadUrl: `/api/attachments/${row.id}?download=1`,
+    };
+    const existing = grouped.get(row.messageId);
+    if (existing) existing.push(attachment);
+    else grouped.set(row.messageId, [attachment]);
+  }
+  return grouped;
 }
 
 function summarizeMessage(body: string): string {

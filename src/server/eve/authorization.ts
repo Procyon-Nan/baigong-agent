@@ -45,6 +45,10 @@ export async function authorizeEveServiceRequest(
           conversationTurns.modelConfigVersionId,
           claims.modelConfigVersionId,
         ),
+        eq(
+          conversationTurns.agentConfigVersionId,
+          claims.agentConfigVersionId,
+        ),
       ),
     )
     .leftJoin(

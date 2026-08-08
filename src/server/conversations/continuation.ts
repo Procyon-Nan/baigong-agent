@@ -2,6 +2,7 @@ import "server-only";
 
 import type { AuthenticatedPrincipal } from "@/src/server/auth/principal";
 import { createEveGateway, EveGatewayRejectedError } from "@/src/server/eve/client";
+import { buildEveUserContent } from "@/src/server/eve/user-content";
 import { decryptContinuationToken } from "@/src/server/models/credentials";
 import { conversationUnavailable, eveRequestRejected } from "./errors";
 import { monitorEveEvents } from "./lifecycle";
@@ -18,6 +19,7 @@ export async function continueConversation(
   input: {
     readonly message: string;
     readonly requestId: string;
+    readonly attachmentIds?: readonly string[];
     readonly retryOfTurnId?: string;
   },
   dependencies: {
@@ -65,6 +67,17 @@ export async function continueConversation(
     throw conversationUnavailable();
   }
 
+  let message;
+  try {
+    message = await buildEveUserContent(
+      reservation.message,
+      reservation.attachments ?? [],
+    );
+  } catch (error) {
+    await repository.rejectSubmission(reserved);
+    throw error;
+  }
+
   let accepted;
   try {
     accepted = await eve.continueTurn({
@@ -72,7 +85,7 @@ export async function continueConversation(
       sessionId: reserved.eveSessionId,
       continuationToken,
       streamIndex: reserved.nextStreamIndex,
-      message: reservation.message,
+      message,
     });
   } catch (error) {
     if (error instanceof EveGatewayRejectedError) {
@@ -96,6 +109,7 @@ export async function continueConversation(
         startIndex: reserved.nextStreamIndex,
         events: accepted.events,
         repository,
+        eve,
       }),
   };
 }

@@ -14,3 +14,14 @@ export function deriveConversationTitle(message: string): string {
     .slice(0, MAX_CONVERSATION_TITLE_CHARACTERS)
     .join("");
 }
+
+export function deriveAttachmentConversationTitle(
+  attachments: readonly { readonly displayName: string }[],
+): string {
+  const [first] = attachments;
+  if (!first) return DEFAULT_CONVERSATION_TITLE;
+  const suffix = attachments.length > 1 ? ` 等 ${attachments.length} 个附件` : "";
+  return Array.from(`${first.displayName}${suffix}`)
+    .slice(0, MAX_CONVERSATION_TITLE_CHARACTERS)
+    .join("");
+}

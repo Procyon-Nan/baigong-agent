@@ -5,7 +5,7 @@ import { createServer } from "node:http";
 export type TestApplication = {
   readonly process: ChildProcess;
   readonly output: string[];
-  readonly phase: "P3" | "P4";
+  readonly phase: "P3" | "P4" | "P5";
 };
 
 export function startTestApplication(

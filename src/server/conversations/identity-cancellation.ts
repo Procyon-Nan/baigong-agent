@@ -168,6 +168,7 @@ async function reserveIdentityCancellations(
         ownerUserId: conversation.ownerUserId,
         ownerSource: conversation.ownerSource,
         modelConfigVersionId: turn.modelConfigVersionId,
+        agentConfigVersionId: turn.agentConfigVersionId,
         eveTurnId: turn.eveTurnId,
         conversationStatus: "CANCELLING",
         turnStatus: "CANCELLING",
@@ -296,6 +297,7 @@ async function monitorIdentityCancellation(
     conversationId: reservation.conversationId,
     startIndex: reservation.nextStreamIndex,
     events: throughSessionSettlement(events),
+    eve,
   });
 }
 

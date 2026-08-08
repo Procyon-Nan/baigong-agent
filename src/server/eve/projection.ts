@@ -14,6 +14,7 @@ import {
   projectTurnBoundary,
   projectTurnFailure,
 } from "./turn-projection";
+import { projectTodoUpdated } from "./todo-projection";
 
 export {
   createAuthenticationExpiredEvent,
@@ -34,6 +35,7 @@ export type {
   PublicInputOption,
   PublicInputRequest,
   PublicInteractionOrigin,
+  PublicTodoItem,
 } from "./projection-types";
 export { reconcileAssistantText } from "./turn-projection";
 
@@ -74,6 +76,8 @@ export function projectEveEvent(
       return projectSubagentCreated(context, at);
     case "input.requested":
       return projectInputRequested(event, context, at);
+    case "action.result":
+      return projectTodoUpdated(event, context, at);
     case "authorization.required":
       return projectAuthorizationRequired(event, context, at);
     default:

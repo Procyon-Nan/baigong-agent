@@ -38,6 +38,7 @@ export function createBffServiceAuth(
             conversationId: claims.conversationId,
             turnId: claims.turnId,
             modelConfigVersionId: claims.modelConfigVersionId,
+            agentConfigVersionId: claims.agentConfigVersionId,
           },
           authenticator: "baigong-bff",
           issuer: claims.iss,
@@ -60,5 +61,13 @@ export const bffServiceAuth = createBffServiceAuth();
 
 export default eveChannel({
   auth: [bffServiceAuth],
-  uploadPolicy: "disabled",
+  uploadPolicy: {
+    allowedMediaTypes: [
+      "image/png",
+      "image/jpeg",
+      "image/webp",
+      "application/pdf",
+    ],
+    maxBytes: 20 * 1_024 * 1_024,
+  },
 });

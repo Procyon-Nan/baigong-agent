@@ -42,6 +42,7 @@ const eveServiceTokenInputSchema = z
     conversationId: resourceIdentifierSchema,
     turnId: resourceIdentifierSchema,
     modelConfigVersionId: resourceIdentifierSchema,
+    agentConfigVersionId: resourceIdentifierSchema,
   })
   .superRefine(assertIdentityCombination);
 

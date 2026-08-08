@@ -59,7 +59,9 @@ describe("P4 message persistence", () => {
     const messages = await database
       .select()
       .from(conversationMessages)
-      .where(eq(conversationMessages.conversationId, reservation.conversationId));
+      .where(
+        eq(conversationMessages.conversationId, reservation.conversationId),
+      );
 
     expect(conversation).toMatchObject({
       tenantId: context.tenantId,
@@ -88,7 +90,10 @@ describe("P4 message persistence", () => {
       .select({ value: count() })
       .from(conversationEventReceipts)
       .where(
-        eq(conversationEventReceipts.conversationId, reservation.conversationId),
+        eq(
+          conversationEventReceipts.conversationId,
+          reservation.conversationId,
+        ),
       );
     const [unchanged] = await database
       .select({ lastEveCursor: conversations.lastEveCursor })
@@ -170,6 +175,87 @@ describe("P4 message persistence", () => {
       { eventType: "message.completed", turnStatus: null },
       { eventType: "turn.cancelled", turnStatus: "CANCELLED" },
       { eventType: "session.waiting", turnStatus: null },
+    ]);
+  }, 30_000);
+
+  it("replays a delayed cancellation without blocking the current turn", async () => {
+    const { context, repository, reservation } = await readyConversation(
+      "delayed-cancellation",
+      "first turn",
+    );
+    const conversationId = reservation.conversationId;
+    const firstEveTurnId = `eve-${randomUUID()}`;
+    await repository.applyEvent(
+      conversationId,
+      0,
+      turnEvent("turn.started", firstEveTurnId),
+    );
+
+    const cancellation = await repository.reserveCancellation(
+      context.administrator,
+      conversationId,
+      reservation.turnId,
+    );
+    expect(cancellation.kind).toBe("reserved");
+    if (cancellation.kind !== "reserved") {
+      throw new Error("Expected a cancellation reservation.");
+    }
+    await repository.settleUnresolvedCancellation(cancellation.value);
+
+    const continuation = await repository.reserveContinuation(
+      context.administrator,
+      conversationId,
+      { message: "second turn", requestId: randomUUID() },
+    );
+    expect(continuation.kind).toBe("reserved");
+    if (continuation.kind !== "reserved") {
+      throw new Error("Expected a continuation reservation.");
+    }
+    await repository.acceptContinuation(
+      continuation.value,
+      continuation.value.eveSessionId!,
+    );
+
+    const secondEveTurnId = `eve-${randomUUID()}`;
+    await applyEvents(
+      repository,
+      conversationId,
+      [
+        turnEvent("turn.cancelled", firstEveTurnId),
+        waitingEvent("delayed-first-token"),
+        turnEvent("turn.started", secondEveTurnId),
+        turnEvent("turn.cancelled", secondEveTurnId),
+        waitingEvent("second-token"),
+      ],
+      1,
+    );
+
+    const [conversation] = await getDatabase()
+      .select()
+      .from(conversations)
+      .where(eq(conversations.id, conversationId));
+    const turns = await getDatabase()
+      .select()
+      .from(conversationTurns)
+      .where(eq(conversationTurns.conversationId, conversationId))
+      .orderBy(asc(conversationTurns.createdAt));
+
+    expect(conversation).toMatchObject({
+      status: "WAITING",
+      activeTurnId: null,
+      lastEveCursor: 5n,
+    });
+    expect(turns).toEqual([
+      expect.objectContaining({
+        id: reservation.turnId,
+        eveTurnId: firstEveTurnId,
+        status: "CANCELLED",
+      }),
+      expect.objectContaining({
+        id: continuation.value.turnId,
+        eveTurnId: secondEveTurnId,
+        status: "CANCELLED",
+      }),
     ]);
   }, 30_000);
 
