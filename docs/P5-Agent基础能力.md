@@ -1,8 +1,9 @@
 # P5：Agent 基础能力
 
 > 文件名：`docs/P5-Agent基础能力.md`
-> 状态：方案已定稿，待实施
+> 状态：已完成
 > 定稿日期：2026-08-06
+> 完成日期：2026-08-08
 > 前置阶段：P0、P1、P2、P3、P4 已完成
 
 ## 1. 目标
@@ -45,7 +46,7 @@ P5 在既有安全对话、会话持久化和管理员审计链路上交付以�
 - 不启用 eve 原生、依赖模型提供商能力的 `web_search`。
 - 不在 P5 实现自定义搜索 Tool，也不接入 Bing、Google、Tavily、Brave 等搜索供应商；未来单独设计本项目自己的搜索 Tool。
 - 不实现 Tool 逐次审批、应用层自动重试或普通用户 Tool 详情页面。
-- 不定义固定专家 Subagent，不增加自定义数量、并发或深度限制，不修改 eve。
+- 不定义固定专家 Subagent，不修改 eve 的单层委派和原生执行机制；应用层采用独立的主 Agent 与 Subagent 并发计数。
 - 不支持 Skill脚本、附件、支持文件或其他可执行内容；未来 Agent自行创建 Skill的产品规则不在 P5 实现。
 
 ### 2.3 未来保留边界
@@ -56,12 +57,16 @@ P5 在既有安全对话、会话持久化和管理员审计链路上交付以�
 
 ## 3. 已安装 eve 事实与采用方式
 
-当前项目固定使用 `eve@0.27.12-baigong.0`。P5 依据已安装源码和文档采用以下原生能力：
+当前项目固定使用 `eve@0.27.12-baigong.4`。P5 依据已安装源码和文档采用以下原生能力：
 
 - eve 请求 `message` 接受字符串或 AI SDK `UserContent`，可混合文本、图片和文件 part。
 - `createDataUrlFilePart` 可将受信服务端读取的字节构造为内联 `data:` URL 文件 part。
 - `message.received.parts` 只投影可渲染的文件名、媒体类型、大小和可选 URL，不包含原始字节或 Sandbox 路径。
 - `disableTool()` 可按同名文件移除框架 Tool，拼写或目标错误会在构建时失败。
+- `disableSandbox()` 可按 Agent 节点显式禁用 Sandbox；禁用后不会选择、安装、预热或启动 Sandbox 后端，内联图片和 PDF `FilePart` 原样进入模型适配层。
+- disabled Sandbox 下，当前 Turn 的新图片和 PDF 使用文件感知 Token 估算，不会在首次模型调用前因 Base64 文本估算膨胀而触发压缩。
+- Tool 返回的图片和 PDF 会临时投影为提供商可识别的多模态用户输入；投影不进入持久历史或事件流，Tool role 也不携带完整 Base64。
+- Session/Turn 级动态 Tool 跨模型 Step 重放时保留 `toModelOutput`；无法恢复声明的 mapper 时整个 Tool 失败关闭，不退回包含完整 Base64 的原始 JSON。
 - `todo` 使用 eve 原生每会话持久状态。
 - `web_fetch` 在应用运行时执行；eve 原生 `web_search` 由支持它的模型提供商托管执行，但 P5 不采用该能力。
 - eve 静态 Markdown Skill在构建期扫描并编译，新增或修改后需要重新构建；eve动态 Skill依赖 Sandbox。两者都不符合 P5 的运行时数据库 Skill边界，因此 P5 不使用其原生 Skill注册表。
@@ -73,7 +78,7 @@ P5 在既有安全对话、会话持久化和管理员审计链路上交付以�
 
 ### 3.1 P5 的动态能力实现方式
 
-P5 不再要求修改 eve。能力按以下方式组合：
+P5 使用百工维护的 eve 补丁版本提供显式无 Sandbox 模式。能力按以下方式组合：
 
 - eve 原生根级 `agent` 与 `ask_question` 固定启用，不进入数据库 Tool开关。
 - eve 原生 `web_search` 继续通过 `disableTool()` 固定禁用，未来由本项目实现普通动态搜索 Tool。
@@ -95,7 +100,7 @@ P5 不再要求修改 eve。能力按以下方式组合：
 | `glob` | 禁用 |
 | `grep` | 禁用 |
 
-eve `Workflow` 保持未注册。P5 不新增 `agent/sandbox.ts`、`agent/sandbox/`、Sandbox 镜像或 Sandbox 运行时依赖，也不新增终端策略数据库字段和管理控件。
+eve `Workflow` 保持未注册。根 Agent 的 `agent/sandbox.ts` 导出 `disableSandbox()`，以显式阻止默认 Sandbox 后端选择和附件暂存；不新增 Sandbox workspace、Sandbox 镜像、Sandbox 运行时依赖、终端策略数据库字段或管理控件。该语义按 Agent 节点独立生效，未来增加独立配置的静态 Subagent 时必须逐节点确认。
 
 自动化必须读取实际编译后的 Agent 能力清单，确认上述 Tool 均未暴露，不能只断言前端没有入口。
 
@@ -268,6 +273,8 @@ eve `Workflow` 保持未注册。P5 不新增 `agent/sandbox.ts`、`agent/sandbo
 - 文本消息转换为 `text` part；仅附件消息不注入伪造的用户文本。
 - 服务端读取附件字节并构造 AI SDK 文件 part，使用已验证的媒体类型和安全显示名。
 - 图片和 PDF 只在 Turn 锁定的模型版本声明支持时加入模型请求。
+- 当前用户消息已经携带的图片或 PDF 由模型直接分析，不先调用附件列表或读取 Tool。
+- 历史附件回读以及 Subagent 按需读取父主会话附件时，才使用附件列表和读取 Tool。
 - 不把附件鉴权 URL交给外部模型抓取，不把磁盘路径写入 Prompt。
 - 不在消息提交期间执行文档解析、OCR 或 Markdown 转换。
 
@@ -314,6 +321,7 @@ PostgreSQL 和普通用户历史只保存、返回以下附件信息：
 - 服务端从 `ctx.session` 和已验证的父子会话关系解析根会话，再执行数据库所有权校验。
 - 主 Agent 和其子 Agent具有相同的根会话附件读取范围；均不能读取用户其他会话或其他用户附件。
 - Tool 输出不得包含本地路径。图片/PDF是否作为模型内容返回仍受 Turn 锁定模型能力限制。
+- 当前消息已经携带的附件不重复调用本节 Tool；Tool 只用于历史附件回读或 Subagent 获取未随委派消息携带的父主会话附件。
 - 不自动把全部附件正文复制进每条 Subagent 委派消息；子 Agent 按需调用附件 Tool。
 
 ### 9.3 Web Tool
@@ -341,6 +349,7 @@ PostgreSQL 和普通用户历史只保存、返回以下附件信息：
 - Skill只包含名称、描述和 Markdown指令，不支持 TypeScript、脚本、附件、支持文件或其他可执行内容，也不需要 Sandbox。
 - 管理员可以在“Agent 能力”页面创建 Skill、基于现有 Skill创建新版本、启用或关闭 Skill，无需重新构建或重启项目。
 - 已被 Agent能力版本引用的 Skill版本不可修改或删除；编辑永远创建新版本，历史 Turn继续引用原版本。
+- P5 不提供 Skill定义或历史版本删除入口；不再使用的 Skill通过关闭启用状态并保存新能力版本停用，权威定义和版本记录继续保留。
 - Skill只增加模型按需加载的指令，不扩大 Tool、身份、附件或外部知识源权限。
 - 未来 Agent自行创建 Skill时复用相同数据模型；是否允许直接启用、是否需要管理员审核及可见范围由后续阶段决定，P5 不提供 `create_skill` Tool。
 
@@ -386,7 +395,9 @@ P5 迁移创建系统内置 `evidence_research` 的首个数据库版本，并�
 - 使用主 Agent 副本，不定义固定专家 Subagent。
 - 子 Agent 继承主 Agent 当前 Turn 锁定的指令、身份、Tools 和 Skills，使用独立会话历史与状态。
 - eve 原生不向子 Agent 暴露 `agent` 或 `Workflow`，因此保持单层。
-- 不增加数量、并发硬限制或软限制，不修改 eve 原生行为。
+- 用户跨主会话最多同时运行 3 个主 Agent Turn；每个主 Agent Turn 最多保留 6 个活动 Subagent。两者分别计数，主 Agent 自身不计入 6 个 Subagent。
+- Subagent 完成、失败或取消后立即释放其活动额度，不依赖 Token、动作索引或 UI 等派生审计投影成功。
+- 超出 6 个活动 Subagent 的委派不建立可运行的子会话映射；Agent 指令同时约束单个活动委派批次不超过 6 个。
 - 子 Agent 完成原始委派后发送完成事件并进入只读状态，用户不能把它当普通聊天会话继续发送消息。
 
 ### 11.2 交互与权限
@@ -568,6 +579,7 @@ P5 不需要 Docker、对象存储、OCR、文档转换服务、搜索供应商�
 - Skill配置修改从下一 Turn生效，运行中 Turn和历史 Turn继续使用各自锁定的旧版本。
 - eve原生 `agent` 与 `ask_question` 始终存在且没有管理员开关；eve原生 `web_search` 始终不可用。
 - `bash`、`read_file`、`write_file`、`glob`、`grep` 与 `Workflow` 在实际 Agent 清单中持续不可用。
+- 实际 Agent 清单以 `eve:disabled-sandbox` 明确标记根 Agent 已禁用 Sandbox，而不是把“未声明 Sandbox”误认为禁用。
 - `todo` 状态、`ask_question` 路由、Tool失败、取消和 P4动作审计。
 - 根级 Subagent继承锁定能力、单层限制、父子映射、取消传播和只读完成态。
 - 主 Agent与子 Agent可读父主会话附件，但不能读取其他会话附件。
@@ -604,6 +616,36 @@ P5 完成前至少运行：
 - 嵌入页面完整浏览器验收继续延期至 P9，但嵌入身份的附件自动化隔离必须通过。
 
 默认模型 Tool Calling测试不可延期，因为 P5 后续能力以 `tool_calls` 为基础。
+
+### 17.5 当前自动化实施结果
+
+截至 2026-08-08，项目已接入固定发布包 `eve@0.27.12-baigong.4`，根 Agent 通过 `disableSandbox()` 显式禁用 Sandbox。P5 HTTP 验收确认当前图片只经过一次必要的流式模型请求并以真实 `image_url` 到达提供商；Turn 级动态附件 Tool 按“列表、读取、回答”形成三个必要的流式 Step，读取结果以真实多模态 part 到达提供商。两种路径均未触发首次回复前压缩，未产生 synthetic `message.received`，Tool role 未携带完整 Base64。验收过程中没有安装、预热或启动 Microsandbox、`just-bash` 或其他 Sandbox 后端；测试只保存请求形状的布尔观察和计数，不持久化请求正文或附件内容。
+
+以下门禁已通过：
+
+- `npm run typecheck`
+- `npm run test:p5:agent`
+- `npm run test:p5:database`：2 个测试文件、8 项测试通过
+- `npm run test:p5:http`：当前图片单次流式多模态请求、附件 Tool 多模态回读、无 synthetic 用户事件、无首次回复前压缩、附件上传、仅附件消息、安全历史投影、鉴权预览和绑定后不可变均通过
+- `npm test`：34 个测试文件、192 项测试通过
+- `npm run db:check`
+- `npm run build`
+- `git diff --check`
+
+`package.json` 与 `package-lock.json` 均只引用 GitHub Release 中的 `eve-0.27.12-baigong.4.tgz`，不依赖本地 eve 工作区；安装包 SHA-256 为 `598bc5fae0fdb7afbfb2505489e16ca416e305078e109edd0c950ef9916a65ae`。
+
+### 17.6 人工验收结果
+
+2026-08-08，用户确认第 17.4 节全部必须项验收通过：
+
+- 默认模型完整 Tool Calling 测试成功，页面能够显示最终回复、耗时和 Token。
+- 动态 Tool 与 Skill 变更从下一 Turn 生效，运行中 Turn 保持锁定版本；管理员能够创建 Skill、编辑生成不可变新版本、启停，并由 Agent 通过 `load_skill` 读取当前 Turn 版本。
+- `todo`、`ask_question`、`web_fetch`、Subagent 和管理员审计均可正常使用，普通用户看不到 Tool 参数、结果或内部执行详情。
+- 附件上传、进度、失败文件单独重试、仅附件发送、历史恢复、图片预览、PDF 预览与下载、归档保留均符合设计。
+- 主 Agent 能够直接识别图片；升级至 `eve@0.27.12-baigong.4` 后，Subagent 能够按权限读取父主会话图片并正确分析，不再把完整 Base64 作为普通 Tool 文本发送给模型。
+- Subagent 完成后活动额度正确释放，用户能够继续与主 Agent 交互；父子会话入口、只读完成态和管理员执行详情正常。
+
+嵌入页面完整浏览器验收仍按既定边界延期至 P9，不属于 P5 阻塞项。P5 的代码实施、自动化门禁和必须项人工验收均已完成，可以进入 P6。
 
 ## 18. 实施顺序
 
