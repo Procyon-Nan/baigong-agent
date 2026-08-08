@@ -22,6 +22,9 @@ export {
 export {
   MODEL_TEST_PROMPT,
   MODEL_TEST_TIMEOUT_MS,
+  MODEL_TOOL_CALLING_TEST_TOOL,
   testModelConfiguration,
+  testModelToolCalling,
   type ModelConnectionTestResult,
+  type ModelToolCallingTestResult,
 } from "./testing";

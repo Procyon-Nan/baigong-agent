@@ -29,6 +29,8 @@ export async function resolveModelConfigurationVersion(
     baseUrl: version.baseUrl,
     modelName: version.modelName,
     contextWindowTokens: version.contextWindowTokens,
+    supportsImageInput: version.supportsImageInput,
+    supportsNativePdfInput: version.supportsNativePdfInput,
     hasApiKey: version.encryptedApiKey !== null,
     createdAt: version.createdAt,
     updatedAt: version.createdAt,

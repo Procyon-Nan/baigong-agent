@@ -50,13 +50,19 @@ export async function hasCurrentModelConfiguration(
 export type ModelClientSettings = {
   readonly available: boolean;
   readonly contextWindowTokens: number | null;
+  readonly supportsImageInput: boolean;
+  readonly supportsNativePdfInput: boolean;
 };
 
 export async function getCurrentModelClientSettings(
   tenantId: string,
 ): Promise<ModelClientSettings> {
   const [current] = await getDatabase()
-    .select({ contextWindowTokens: modelConfigVersions.contextWindowTokens })
+    .select({
+      contextWindowTokens: modelConfigVersions.contextWindowTokens,
+      supportsImageInput: modelConfigVersions.supportsImageInput,
+      supportsNativePdfInput: modelConfigVersions.supportsNativePdfInput,
+    })
     .from(modelConfigurations)
     .innerJoin(
       modelConfigVersions,
@@ -68,8 +74,13 @@ export async function getCurrentModelClientSettings(
     .where(eq(modelConfigurations.tenantId, tenantId))
     .limit(1);
   return current
-    ? { available: true, contextWindowTokens: current.contextWindowTokens }
-    : { available: false, contextWindowTokens: null };
+    ? { available: true, ...current }
+    : {
+        available: false,
+        contextWindowTokens: null,
+        supportsImageInput: false,
+        supportsNativePdfInput: false,
+      };
 }
 
 export async function saveModelConfiguration(
@@ -110,6 +121,8 @@ export async function saveModelConfiguration(
         baseUrl: normalizedInput.baseUrl,
         modelName: normalizedInput.modelName,
         contextWindowTokens: normalizedInput.contextWindowTokens,
+        supportsImageInput: normalizedInput.supportsImageInput,
+        supportsNativePdfInput: normalizedInput.supportsNativePdfInput,
         encryptedApiKey,
         createdByUserId: actor.userId,
         createdAt: now,
@@ -227,11 +240,21 @@ export async function purgeUnusedModelCredentials(
 export async function lockCurrentModelConfigurationVersion(
   transaction: ModelTransaction,
   tenantId: string,
-): Promise<{ readonly id: string; readonly version: number }> {
+): Promise<{
+  readonly id: string;
+  readonly version: number;
+  readonly supportsImageInput: boolean;
+  readonly supportsNativePdfInput: boolean;
+}> {
   await lockModelConfiguration(transaction, tenantId);
   const current = await findCurrentVersion(transaction, tenantId);
   if (!current) throw modelNotConfigured();
-  return { id: current.id, version: current.version };
+  return {
+    id: current.id,
+    version: current.version,
+    supportsImageInput: current.supportsImageInput,
+    supportsNativePdfInput: current.supportsNativePdfInput,
+  };
 }
 
 export async function resolveApiKeyForTest(
@@ -256,6 +279,8 @@ async function findCurrentVersion(
       baseUrl: modelConfigVersions.baseUrl,
       modelName: modelConfigVersions.modelName,
       contextWindowTokens: modelConfigVersions.contextWindowTokens,
+      supportsImageInput: modelConfigVersions.supportsImageInput,
+      supportsNativePdfInput: modelConfigVersions.supportsNativePdfInput,
       encryptedApiKey: modelConfigVersions.encryptedApiKey,
       credentialPurgedAt: modelConfigVersions.credentialPurgedAt,
       createdAt: modelConfigVersions.createdAt,
@@ -340,6 +365,8 @@ function normalizeInput(
     baseUrl: normalizeModelBaseUrl(input.baseUrl),
     modelName: input.modelName.trim(),
     contextWindowTokens: input.contextWindowTokens,
+    supportsImageInput: input.supportsImageInput,
+    supportsNativePdfInput: input.supportsNativePdfInput,
     apiKey: input.apiKey,
   };
 }
@@ -351,6 +378,8 @@ function toPublicConfiguration(version: {
   readonly baseUrl: string;
   readonly modelName: string;
   readonly contextWindowTokens: number | null;
+  readonly supportsImageInput: boolean;
+  readonly supportsNativePdfInput: boolean;
   readonly encryptedApiKey: string | null;
   readonly createdAt: Date;
   readonly updatedAt?: Date;
@@ -363,6 +392,8 @@ function toPublicConfiguration(version: {
     baseUrl: version.baseUrl,
     modelName: version.modelName,
     contextWindowTokens: version.contextWindowTokens,
+    supportsImageInput: version.supportsImageInput,
+    supportsNativePdfInput: version.supportsNativePdfInput,
     hasApiKey: version.encryptedApiKey !== null,
     createdAt: version.createdAt,
     updatedAt: version.updatedAt ?? version.createdAt,

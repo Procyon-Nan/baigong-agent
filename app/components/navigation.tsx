@@ -7,6 +7,7 @@ import {
   LockKeyhole,
   MessageSquareText,
   Settings,
+  Sparkles,
   UsersRound,
 } from "lucide-react";
 import Link from "next/link";
@@ -22,6 +23,7 @@ import styles from "./application-frame.module.css";
 const navigationIcons = {
   chat: Bot,
   models: Boxes,
+  capabilities: Sparkles,
   users: UsersRound,
   integrations: KeyRound,
   conversations: MessageSquareText,

@@ -1,13 +1,15 @@
 "use client";
 
 import {
+  BadgeCheck,
   CircleAlert,
   FlaskConical,
   KeyRound,
   Save,
   Trash2,
+  Wrench,
 } from "lucide-react";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { useAdminRequest } from "@/app/admin/use-admin-request";
 import { MarkdownContent } from "@/app/components/chat/markdown-content";
 import styles from "./models.module.css";
@@ -20,6 +22,8 @@ type ModelConfiguration = {
   readonly baseUrl: string;
   readonly modelName: string;
   readonly contextWindowTokens: number | null;
+  readonly supportsImageInput: boolean;
+  readonly supportsNativePdfInput: boolean;
   readonly hasApiKey: boolean;
   readonly createdAt: string;
   readonly updatedAt: string;
@@ -35,11 +39,18 @@ type ConnectionTestResult = {
   };
 };
 
+type ToolCallingTestResult = ConnectionTestResult & {
+  readonly verified: true;
+  readonly toolName: string;
+};
+
 type FormState = {
   readonly providerDisplayName: string;
   readonly baseUrl: string;
   readonly modelName: string;
   readonly contextWindowTokens: string;
+  readonly supportsImageInput: boolean;
+  readonly supportsNativePdfInput: boolean;
   readonly apiKey: string;
   readonly clearApiKey: boolean;
 };
@@ -49,6 +60,8 @@ const emptyForm: FormState = {
   baseUrl: "",
   modelName: "",
   contextWindowTokens: "",
+  supportsImageInput: false,
+  supportsNativePdfInput: false,
   apiKey: "",
   clearApiKey: false,
 };
@@ -63,6 +76,8 @@ export function ModelConfigurationManager({
   const [testResult, setTestResult] = useState<ConnectionTestResult | null>(
     null,
   );
+  const [toolCallingTestResult, setToolCallingTestResult] =
+    useState<ToolCallingTestResult | null>(null);
 
   useEffect(() => {
     setForm(formFromConfiguration(configuration));
@@ -71,6 +86,7 @@ export function ModelConfigurationManager({
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setTestResult(null);
+    setToolCallingTestResult(null);
     await request("/api/admin/model-config", {
       method: "PUT",
       body: JSON.stringify(requestBody(form)),
@@ -90,9 +106,23 @@ export function ModelConfigurationManager({
     if (result) setTestResult(result.result);
   }
 
+  async function testToolCalling() {
+    setToolCallingTestResult(null);
+    const result = await request<{ readonly result: ToolCallingTestResult }>(
+      "/api/admin/model-config/test-tool-calling",
+      {
+        method: "POST",
+        body: JSON.stringify(requestBody(form)),
+      },
+      { refresh: false },
+    );
+    if (result) setToolCallingTestResult(result.result);
+  }
+
   async function removeConfiguration() {
     if (!window.confirm("删除当前模型配置？")) return;
     setTestResult(null);
+    setToolCallingTestResult(null);
     const result = await request<{ readonly deleted: boolean }>(
       "/api/admin/model-config",
       { method: "DELETE" },
@@ -181,6 +211,37 @@ export function ModelConfigurationManager({
           </label>
         </div>
 
+        <fieldset className={styles.capabilityFieldset}>
+          <legend>模型输入能力</legend>
+          <p>能力由管理员根据提供商文档声明，系统不会根据模型名称推断。</p>
+          <label className={styles.checkboxLabel}>
+            <input
+              checked={form.supportsImageInput}
+              onChange={(event) =>
+                setForm({
+                  ...form,
+                  supportsImageInput: event.target.checked,
+                })
+              }
+              type="checkbox"
+            />
+            <span>支持 PNG、JPEG 和 WebP 图片输入</span>
+          </label>
+          <label className={styles.checkboxLabel}>
+            <input
+              checked={form.supportsNativePdfInput}
+              onChange={(event) =>
+                setForm({
+                  ...form,
+                  supportsNativePdfInput: event.target.checked,
+                })
+              }
+              type="checkbox"
+            />
+            <span>支持原生 PDF 输入</span>
+          </label>
+        </fieldset>
+
         {configuration?.hasApiKey ? (
           <label className={styles.checkboxLabel}>
             <input
@@ -216,6 +277,15 @@ export function ModelConfigurationManager({
             <FlaskConical aria-hidden="true" size={16} />
             测试连接
           </button>
+          <button
+            className={styles.secondaryButton}
+            disabled={isPending}
+            onClick={testToolCalling}
+            type="button"
+          >
+            <Wrench aria-hidden="true" size={16} />
+            测试工具调用
+          </button>
           {configuration ? (
             <button
               aria-label="删除模型配置"
@@ -236,25 +306,18 @@ export function ModelConfigurationManager({
         ) : null}
       </form>
 
-      <aside className={styles.testPanel} aria-live="polite">
-        <div className={styles.testHeading}>
-          <KeyRound aria-hidden="true" size={17} />
-          <h2>连接测试</h2>
-        </div>
-        {testResult ? (
-          <>
-            <div className={styles.testMeta}>
-              <span>{testResult.durationMs} ms</span>
-              <span>{formatUsage(testResult.usage)}</span>
-            </div>
-            <div className={styles.testOutput}>
-              <MarkdownContent markdown={testResult.output} />
-            </div>
-          </>
-        ) : (
-          <p className={styles.emptyTest}>尚未执行</p>
-        )}
-      </aside>
+      <div className={styles.testPanels} aria-live="polite">
+        <TestResultPanel
+          icon={<KeyRound aria-hidden="true" size={17} />}
+          result={testResult}
+          title="连接测试"
+        />
+        <TestResultPanel
+          icon={<Wrench aria-hidden="true" size={17} />}
+          result={toolCallingTestResult}
+          title="工具调用测试"
+        />
+      </div>
     </div>
   );
 }
@@ -268,6 +331,8 @@ function formFromConfiguration(
     baseUrl: configuration.baseUrl,
     modelName: configuration.modelName,
     contextWindowTokens: configuration.contextWindowTokens?.toString() ?? "",
+    supportsImageInput: configuration.supportsImageInput,
+    supportsNativePdfInput: configuration.supportsNativePdfInput,
     apiKey: "",
     clearApiKey: false,
   };
@@ -281,12 +346,50 @@ function requestBody(form: FormState) {
     contextWindowTokens: form.contextWindowTokens
       ? Number(form.contextWindowTokens)
       : null,
+    supportsImageInput: form.supportsImageInput,
+    supportsNativePdfInput: form.supportsNativePdfInput,
     ...(form.clearApiKey
       ? { apiKey: null }
       : form.apiKey
         ? { apiKey: form.apiKey }
         : {}),
   };
+}
+
+function TestResultPanel({
+  icon,
+  result,
+  title,
+}: {
+  readonly icon: ReactNode;
+  readonly result: ConnectionTestResult | null;
+  readonly title: string;
+}) {
+  return (
+    <section className={styles.testPanel}>
+      <div className={styles.testHeading}>
+        {icon}
+        <h2>{title}</h2>
+      </div>
+      {result ? (
+        <>
+          <div className={styles.testSuccess}>
+            <BadgeCheck aria-hidden="true" size={14} />
+            测试成功
+          </div>
+          <div className={styles.testMeta}>
+            <span>{result.durationMs} ms</span>
+            <span>{formatUsage(result.usage)}</span>
+          </div>
+          <div className={styles.testOutput}>
+            <MarkdownContent markdown={result.output} />
+          </div>
+        </>
+      ) : (
+        <p className={styles.emptyTest}>尚未执行</p>
+      )}
+    </section>
+  );
 }
 
 function formatUsage(usage: ConnectionTestResult["usage"]): string {

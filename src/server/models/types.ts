@@ -6,6 +6,8 @@ export type PublicModelConfiguration = {
   readonly baseUrl: string;
   readonly modelName: string;
   readonly contextWindowTokens: number | null;
+  readonly supportsImageInput: boolean;
+  readonly supportsNativePdfInput: boolean;
   readonly hasApiKey: boolean;
   readonly createdAt: Date;
   readonly updatedAt: Date;

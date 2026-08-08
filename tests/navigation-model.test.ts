@@ -14,6 +14,7 @@ describe("navigation model", () => {
     ).toEqual([
       { href: "/", enabled: false },
       { href: "/admin/models", enabled: false },
+      { href: "/admin/agent-capabilities", enabled: false },
       { href: "/admin/users", enabled: false },
       { href: "/admin/integrations", enabled: false },
       { href: "/admin/conversations", enabled: false },
@@ -29,6 +30,7 @@ describe("navigation model", () => {
     expect(navigationForMode("admin").map((item) => item.href)).toEqual([
       "/",
       "/admin/models",
+      "/admin/agent-capabilities",
       "/admin/users",
       "/admin/integrations",
       "/admin/conversations",

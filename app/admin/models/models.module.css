@@ -57,6 +57,11 @@
   background: var(--surface);
 }
 
+.testPanels {
+  display: grid;
+  gap: 14px;
+}
+
 .formPanel {
   padding: 20px;
 }
@@ -121,6 +126,32 @@
   margin-top: 15px;
   color: var(--text-muted);
   font-size: 11px;
+}
+
+.capabilityFieldset {
+  display: grid;
+  gap: 10px;
+  margin: 18px 0 0;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.capabilityFieldset legend {
+  padding: 0 5px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.capabilityFieldset p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.capabilityFieldset .checkboxLabel {
+  margin-top: 0;
 }
 
 .actions {
@@ -210,6 +241,16 @@
   margin-top: 14px;
   color: var(--text-muted);
   font-size: 10px;
+}
+
+.testSuccess {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 14px;
+  color: var(--success);
+  font-size: 11px;
+  font-weight: 700;
 }
 
 .testOutput {

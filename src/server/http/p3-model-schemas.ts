@@ -6,6 +6,8 @@ const modelConfigurationFields = {
   baseUrl: z.string().trim().min(1).max(2_048).transform(normalizeModelBaseUrl),
   modelName: z.string().trim().min(1).max(255),
   contextWindowTokens: z.int().positive().max(2_147_483_647).nullable(),
+  supportsImageInput: z.boolean().default(false),
+  supportsNativePdfInput: z.boolean().default(false),
   apiKey: z.string().max(16_384).nullable().optional(),
 } as const;
 

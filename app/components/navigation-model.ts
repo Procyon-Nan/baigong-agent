@@ -2,6 +2,7 @@ export type NavigationMode = "setup" | "user" | "admin";
 export type NavigationIcon =
   | "chat"
   | "models"
+  | "capabilities"
   | "users"
   | "integrations"
   | "conversations"
@@ -27,6 +28,13 @@ const navigationItems: readonly NavigationItem[] = [
     label: "模型配置",
     href: "/admin/models",
     icon: "models",
+    visibleIn: ["setup", "admin"],
+    enabledIn: ["admin"],
+  },
+  {
+    label: "Agent 能力",
+    href: "/admin/agent-capabilities",
+    icon: "capabilities",
     visibleIn: ["setup", "admin"],
     enabledIn: ["admin"],
   },

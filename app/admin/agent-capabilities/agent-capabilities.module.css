@@ -1,0 +1,248 @@
+.header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.header h1,
+.header p,
+.eyebrow,
+.sectionHeading h2,
+.sectionHeading p,
+.boundaryGrid h3 {
+  margin: 0;
+}
+
+.eyebrow {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.header h1 {
+  margin-top: 6px;
+  font-size: 26px;
+}
+
+.header p,
+.sectionHeading p {
+  margin-top: 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.version {
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 20px;
+  margin-top: 26px;
+  align-items: start;
+}
+
+.mainColumn {
+  display: grid;
+  gap: 16px;
+}
+
+.panel {
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.sectionHeading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sectionHeading h2 {
+  font-size: 15px;
+}
+
+.boundaryGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin-top: 16px;
+}
+
+.boundaryGrid h3 {
+  margin-bottom: 8px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.badgeList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.enabled,
+.disabled {
+  padding: 4px 7px;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.enabled {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.disabled {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.optionList {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.option,
+.skillRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.skillRow {
+  justify-content: space-between;
+  padding: 11px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.skillRow .option {
+  flex: 1;
+}
+
+.option > input {
+  margin-top: 3px;
+}
+
+.option strong,
+.option small {
+  display: block;
+}
+
+.option strong {
+  font-size: 12px;
+}
+
+.option small {
+  margin-top: 3px;
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.iconButton {
+  display: grid;
+  width: 31px;
+  height: 31px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: #ffffff;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.primaryButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 38px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 5px;
+  background: var(--accent);
+  color: #ffffff;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.primaryButton:disabled,
+.iconButton:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.form {
+  display: grid;
+  gap: 13px;
+  margin-top: 16px;
+}
+
+.form label span {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.form input,
+.form textarea {
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 9px;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  background: #ffffff;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+}
+
+.form textarea {
+  min-height: 90px;
+  resize: vertical;
+}
+
+.form .markdownEditor {
+  min-height: 280px;
+  font-family: var(--font-mono);
+  line-height: 1.5;
+}
+
+.error {
+  margin: 0;
+  padding: 11px;
+  border-left: 3px solid var(--danger);
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 11px;
+}
+
+@media (max-width: 1050px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 620px) {
+  .boundaryGrid {
+    grid-template-columns: 1fr;
+  }
+}
