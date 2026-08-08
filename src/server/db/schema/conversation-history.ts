@@ -80,6 +80,11 @@ export const conversationMessages = pgTable(
       table.conversationId,
       table.blockId,
     ),
+    uniqueIndex("conversation_messages_tenant_conversation_id_unique").on(
+      table.tenantId,
+      table.conversationId,
+      table.id,
+    ),
     index("conversation_messages_history_index").on(
       table.tenantId,
       table.conversationId,
@@ -265,14 +270,9 @@ export const conversationStepUsages = pgTable(
       .notNull(),
   },
   (table) => [
-    uniqueIndex("conversation_step_usages_eve_step_unique").on(
+    uniqueIndex("conversation_step_usages_cursor_unique").on(
       table.conversationId,
-      table.eveTurnId,
-      table.stepIndex,
-    ),
-    uniqueIndex("conversation_step_usages_turn_step_unique").on(
-      table.turnId,
-      table.stepIndex,
+      table.eveCursor,
     ),
     index("conversation_step_usages_conversation_index").on(
       table.tenantId,
@@ -348,8 +348,9 @@ export const conversationActionAudits = pgTable(
       .notNull(),
   },
   (table) => [
-    uniqueIndex("conversation_action_audits_call_unique").on(
+    uniqueIndex("conversation_action_audits_request_call_unique").on(
       table.conversationId,
+      table.requestEveCursor,
       table.callId,
     ),
     index("conversation_action_audits_turn_index").on(

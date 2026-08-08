@@ -1,0 +1,2 @@
+DROP INDEX "conversation_action_audits_turn_step_call_unique";--> statement-breakpoint
+CREATE UNIQUE INDEX "conversation_action_audits_request_call_unique" ON "conversation_action_audits" USING btree ("conversation_id","request_eve_cursor","call_id");

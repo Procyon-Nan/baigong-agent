@@ -6,7 +6,7 @@ type TestDatabaseEnvironment = {
 };
 
 export function configureDedicatedTestDatabase(
-  phase: "P2" | "P3" | "P4",
+  phase: "P2" | "P3" | "P4" | "P5",
   environment: TestDatabaseEnvironment = process.env,
 ): string {
   const variableName = `${phase}_TEST_DATABASE_URL`;
@@ -27,7 +27,9 @@ export function configureDedicatedTestDatabase(
       `${variableName} must identify a database separate from DATABASE_URL.`,
     );
   }
-  if (phase === "P4") validateP4TestDatabaseName(testDatabaseUrl, variableName);
+  if (phase === "P4" || phase === "P5") {
+    validatePhaseTestDatabaseName(testDatabaseUrl, variableName, phase);
+  }
 
   environment.DATABASE_URL = testDatabaseUrl;
   environment.BAIGONG_DATA_DIR ??= `/tmp/baigong-agent-${phase.toLowerCase()}-tests`;
@@ -60,15 +62,16 @@ function validatePostgresUrl(value: string, name: string): URL {
   return url;
 }
 
-function validateP4TestDatabaseName(
+function validatePhaseTestDatabaseName(
   value: string,
   variableName: string,
+  phase: "P4" | "P5",
 ): void {
   const url = validatePostgresUrl(value, variableName);
   const databaseName = decodeURIComponent(url.pathname.replace(/^\//, ""));
-  if (!databaseName.toLowerCase().endsWith("_p4_test")) {
+  if (!databaseName.toLowerCase().endsWith(`_${phase.toLowerCase()}_test`)) {
     throw new Error(
-      `${variableName} database name must end with _p4_test.`,
+      `${variableName} database name must end with _${phase.toLowerCase()}_test.`,
     );
   }
 }

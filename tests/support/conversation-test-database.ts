@@ -17,7 +17,7 @@ import {
 } from "./p2-test-database";
 import { configureDedicatedTestDatabase } from "./test-database";
 
-export type ConversationTestPhase = "P3" | "P4";
+export type ConversationTestPhase = "P3" | "P4" | "P5";
 
 export type ConversationTestContext = P2TestContext & {
   readonly administrator: AdminPrincipal;

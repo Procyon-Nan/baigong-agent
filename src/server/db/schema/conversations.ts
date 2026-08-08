@@ -15,6 +15,7 @@ import {
 } from "drizzle-orm/pg-core";
 import type { IdentitySource } from "@/src/server/domain/identity";
 import { authUsers } from "./authentication";
+import { agentConfigVersions } from "./agent-capabilities";
 import { modelConfigVersions } from "./models";
 import { tenants } from "./tenants";
 
@@ -101,9 +102,9 @@ export const conversations = pgTable(
       table.ownerUserId,
       table.ownerSource,
     ),
-    uniqueIndex("conversations_parent_delegation_unique").on(
+    uniqueIndex("conversations_parent_called_cursor_unique").on(
       table.parentConversationId,
-      table.delegationCallId,
+      table.parentCalledCursor,
     ),
     index("conversations_owner_listing_index").on(
       table.tenantId,
@@ -192,6 +193,7 @@ export const conversationTurns = pgTable(
     requestId: uuid("request_id").notNull(),
     eveTurnId: text("eve_turn_id"),
     modelConfigVersionId: uuid("model_config_version_id").notNull(),
+    agentConfigVersionId: uuid("agent_config_version_id").notNull(),
     inputMessageId: uuid("input_message_id"),
     retryOfTurnId: uuid("retry_of_turn_id"),
     status: varchar("status", { length: 16 })
@@ -235,6 +237,10 @@ export const conversationTurns = pgTable(
       table.modelConfigVersionId,
       table.status,
     ),
+    index("conversation_turns_agent_config_index").on(
+      table.agentConfigVersionId,
+      table.status,
+    ),
     index("conversation_turns_input_message_index").on(table.inputMessageId),
     index("conversation_turns_retry_index").on(table.retryOfTurnId),
     foreignKey({
@@ -246,6 +252,11 @@ export const conversationTurns = pgTable(
       name: "conversation_turns_tenant_model_version_fk",
       columns: [table.tenantId, table.modelConfigVersionId],
       foreignColumns: [modelConfigVersions.tenantId, modelConfigVersions.id],
+    }),
+    foreignKey({
+      name: "conversation_turns_tenant_agent_config_version_fk",
+      columns: [table.tenantId, table.agentConfigVersionId],
+      foreignColumns: [agentConfigVersions.tenantId, agentConfigVersions.id],
     }),
     foreignKey({
       name: "conversation_turns_retry_fk",

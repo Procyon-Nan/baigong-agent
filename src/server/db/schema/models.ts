@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  boolean,
   check,
   foreignKey,
   index,
@@ -28,6 +29,10 @@ export const modelConfigVersions = pgTable(
     baseUrl: text("base_url").notNull(),
     modelName: varchar("model_name", { length: 255 }).notNull(),
     contextWindowTokens: integer("context_window_tokens"),
+    supportsImageInput: boolean("supports_image_input").default(false).notNull(),
+    supportsNativePdfInput: boolean("supports_native_pdf_input")
+      .default(false)
+      .notNull(),
     encryptedApiKey: text("encrypted_api_key"),
     credentialPurgedAt: timestamp("credential_purged_at", {
       withTimezone: true,
